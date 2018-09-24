@@ -525,7 +525,7 @@ static struct chan_alsaradio_pvt alsaradio_default = {
 /*	DECLARE FUNCTION PROTOTYPES	*/
 
 static void mixer_write(struct chan_alsaradio_pvt *o);
-static void tune_write(struct chan_alsaradio_pvt *o);
+/*static void tune_write(struct chan_alsaradio_pvt *o);*/
 
 static char *alsaradio_active;	 /* the active device */
 
@@ -576,7 +576,7 @@ static struct ast_channel_tech alsaradio_tech = {
 };
 
 /* FIR Low pass filter, 2900 Hz passband with 0.5 db ripple, 6300 Hz stopband at 60db */
-
+/* UNUSED
 static short lpass(short input,short *z)
 {
     int i;
@@ -587,10 +587,10 @@ static short lpass(short input,short *z)
 	4589,3265,1836,573,-331,-801,-881,-694,-395, -113,
 	74,148,136,103} ;
 
-    /* store input at the beginning of the delay line */
+    // store input at the beginning of the delay line
     z[0] = input;
 
-    /* calc FIR and shift data */
+    // calc FIR and shift data
     accum = h[NTAPS - 1] * z[NTAPS - 1];
     for (i = NTAPS - 2; i >= 0; i--) {
         accum += h[i] * z[i];
@@ -599,6 +599,7 @@ static short lpass(short input,short *z)
 
     return(accum >> 15);
 }
+*/
 
 /* lround for uClibc
  *
@@ -1617,7 +1618,7 @@ if (!(c = ast_channel_alloc(1, state, o->cid_num, o->cid_name, "", ext, ctx, NUL
 */
 static struct ast_channel *alsaradio_request(const char *type, int format, void *data, int *cause)
 {
-	struct ast_channel *c;
+	struct ast_channel *c = NULL;
 	struct chan_alsaradio_pvt *o = find_desc(data);
 
 	if (1)
@@ -1932,6 +1933,7 @@ static void store_rxsdtype(struct chan_alsaradio_pvt *o, char *s)
 	ast_log(LOG_WARNING, "set rxsdtype = %s\n", s);
 }
 
+/* unused
 static void tune_write(struct chan_alsaradio_pvt *o)
 {
 	FILE *fp;
@@ -1950,7 +1952,8 @@ static void tune_write(struct chan_alsaradio_pvt *o)
 	fprintf(fp,"txmixbset=%i\n",o->txmixbset);
 	fclose(fp);
 
-}
+}*/
+
 //
 static void mixer_write(struct chan_alsaradio_pvt *o)
 {
@@ -2064,10 +2067,10 @@ static struct chan_alsaradio_pvt *store_config(struct ast_config *cfg, char *ctg
 	return o;
   
   // what is this... ?
-  error:
+ /* error:
 	if (o != &alsaradio_default)
 		free(o);
-	return NULL;
+	return NULL;*/
 }
 
 #ifdef	NEW_ASTERISK
