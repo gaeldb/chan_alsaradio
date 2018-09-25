@@ -2429,22 +2429,24 @@ static int serial_pttkey(struct chan_alsaradio_pvt *o)
 	int ret, status;
 
 	if (o->serdisable)
+	{
+		ast_log(LOG_ERROR, "Serial control is disable for device %s\n", o->serdevname);
 		return (0);
-
+	}
 	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
-        {
-                ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
-                return(-1);
-        }
+    {
+        ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
+        return(-1);
+    }
 
-	//status |= TIOCM_DTR;
-	status |= TIOCM_RTS;
+	status |= TIOCM_DTR;
+	//status |= TIOCM_RTS;
 
 	if ((ret = ioctl(o->serdev, TIOCMSET, &status)) < 0)
-        {
-                ast_log(LOG_ERROR, "Unable to set modem lines for %s: %s\n", o->serdevname, strerror(errno));
-                return(-1);
-        }
+    {
+        ast_log(LOG_ERROR, "Unable to set modem lines for %s: %s\n", o->serdevname, strerror(errno));
+        return(-1);
+    }
 
 	return 0;
 }
@@ -2454,22 +2456,25 @@ static int serial_pttunkey(struct chan_alsaradio_pvt *o)
 	int ret, status;
 
 	if (o->serdisable)
+	{
+		ast_log(LOG_ERROR, "Serial control is disable for device %s\n", o->serdevname);
 		return (0);
+	}
 
 	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
-        {
-                ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
-                return(-1);
-        }
+    {
+        ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
+        return(-1);
+    }
 
-	//status &= ~TIOCM_DTR;
-	status &= ~TIOCM_RTS;
+	status &= ~TIOCM_DTR;
+	//status &= ~TIOCM_RTS;
 
 	if ((ret = ioctl(o->serdev, TIOCMSET, &status)) < 0)
-        {
-                ast_log(LOG_ERROR, "Unable to set modem lines for %s: %s\n", o->serdevname, strerror(errno));
-                return(-1);
-        }
+    {
+        ast_log(LOG_ERROR, "Unable to set modem lines for %s: %s\n", o->serdevname, strerror(errno));
+        return(-1);
+    }
 
 	return 0;
 }
