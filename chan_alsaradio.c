@@ -1456,23 +1456,17 @@ static int alsaradio_fixup(struct ast_channel *oldchan, struct ast_channel *newc
 
 static int alsaradio_indicate(struct ast_channel *c, int cond, const void *data, size_t datalen)
 {
-	struct chan_alsaradio_pvt *o = ast_channel_tech_pvt(c);
-	int res = -1;
+	struct chan_alsaradio_pvt	*o = ast_channel_tech_pvt(c);
+	int  						res = -1;
 
 	switch (cond) {
+		// See frame.h for AST_CONTROL_* enum
 		case AST_CONTROL_BUSY:
 		case AST_CONTROL_CONGESTION:
 		case AST_CONTROL_RINGING:
 			res = cond;
 			break;
-
-		case -1:
-#ifndef	NEW_ASTERISK
-			o->cursound = -1;
-			o->nosound = 0;		/* when cursound is -1 nosound must be 0 */
-#endif
 			return 0;
-
 		case AST_CONTROL_VIDUPDATE:
 			res = -1;
 			break;
@@ -1504,7 +1498,7 @@ static int alsaradio_indicate(struct ast_channel *c, int cond, const void *data,
 			if(o->debuglevel)ast_verbose("chan_alsaradio ACRUK  dev=%s TX OFF >> \n",o->name);
 			break;
 		default:
-			ast_log(LOG_WARNING, "Don't know how to display condition %d on %s\n", cond, ast_channel_name(c));
+			ast_log(LOG_WARNING, "Don't know what to do with condition %d on %s\n", cond, ast_channel_name(c));
 			return -1;
 	}
 
@@ -2520,7 +2514,7 @@ static int load_module(void)
 	}
 
 	ast_cli_register_multiple(cli_alsaradio, sizeof(cli_alsaradio) / sizeof(struct ast_cli_entry));
-	
+	ast_log(LOG_NOTICE, "Module loaded with %s\n", config);
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
@@ -2560,6 +2554,7 @@ static int unload_module(void)
 
 	ao2_cleanup(alsaradio_tech.capabilities);
 	alsaradio_tech.capabilities = NULL;
+	ast_log(LOG_NOTICE, "Module unloaded\n");
 	return 0;
 }
 
