@@ -1444,7 +1444,7 @@ static struct ast_frame *alsaradio_read(struct ast_channel *c)
 
 static int alsaradio_fixup(struct ast_channel *oldchan, struct ast_channel *newchan)
 {
-	struct chan_alsaradio_pvt *p = ast_channel_tech_pvt(newchan);
+	struct chan_alsaradio_pvt 	*p = ast_channel_tech_pvt(newchan);
 
 	ast_mutex_lock(&alsalock);
 	ast_log(LOG_WARNING,"alsaradio_fixup()\n");
