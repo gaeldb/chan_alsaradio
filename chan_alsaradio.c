@@ -1,4 +1,4 @@
- 
+
 // Really need to understand that...
 #define	NEW_ASTERISK 
 
@@ -1615,30 +1615,31 @@ static struct ast_channel *alsaradio_request(const char *type, int format, void 
 	struct ast_channel *c = NULL;
 	struct chan_alsaradio_pvt *o = find_desc(data);
 
-	if (1)
+	if (o->debuglevel)
 	{
-		ast_log(LOG_WARNING, "alsaradio_request type <%s> data 0x%p <%s>\n", type, data, (char *) data);
+		ast_log(LOG_NOTICE, "alsaradio_request type <%s> data 0x%p <%s>\n", type, data, (char *) data);
 	}
-	if (o == NULL) {
+	if (o == NULL)
+	{
 		ast_log(LOG_NOTICE, "Device %s not found\n", (char *) data);
-		/* XXX we could default to 'dsp' perhaps ? */
 		return NULL;
 	}
-	if ((format & AST_FORMAT_SLIN) == 0) {
-		ast_log(LOG_NOTICE, "Format 0x%x unsupported\n", format);
+	if ((format & AST_FORMAT_SLIN) == 0)
+	{
+		ast_log(LOG_WARNING, "Format 0x%x unsupported\n", format);
 		return NULL;
 	}
-	if (o->owner) {
+	if (o->owner)
+	{
 		ast_log(LOG_NOTICE, "Already have a call (chan %p) on the aradio channel\n", o->owner);
 		*cause = AST_CAUSE_BUSY;
 		return NULL;
 	}
-	c = alsaradio_new(o, NULL, NULL, AST_STATE_DOWN);
-	if (c == NULL) {
+	if ((c = alsaradio_new(o, NULL, NULL, AST_STATE_DOWN)) == NULL)
+	{
 		ast_log(LOG_WARNING, "Unable to create new aradio channel\n");
 		return NULL;
 	}
-		
 	return c;
 }
 /*
