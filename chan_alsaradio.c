@@ -10,6 +10,9 @@
  * Jim Dixon, WB6NIL <jim@lambdatel.com>
  * Mark Spencer <markster@digium.com> and Luigi Rizzo
  *
+ * Ported to Asterisk 13+ code structure by Gaël Barbier <barbier.gael@free.fr>
+ * https://github.com/gaeldb/chan_alsaradio/
+ *
  * This program is free software, distributed under the terms of
  * the GNU General Public License Version 2. See the LICENSE file
  * at the top of the source tree.
