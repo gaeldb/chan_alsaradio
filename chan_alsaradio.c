@@ -1059,23 +1059,20 @@ static int alsaradio_call(struct ast_channel *c, char *dest, int timeout)
 {
 	struct chan_alsaradio_pvt *o = ast_channel_tech_pvt(c);
 
-	ast_verbose("alsaradio -- call\n");
-
+	if (o->debuglevel)
+		ast_verbose("alsaradio -- call started\n");
 	o->stopser = 0;
 	time(&o->lastsertime);
 	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
 	ast_setstate(c, AST_STATE_UP);
-
 	ast_mutex_lock(&alsalock);
-
+	// Prepare input hardware
 	snd_pcm_prepare(o->inhandle);
-        snd_pcm_start(o->inhandle);
-
+    snd_pcm_start(o->inhandle);
+    // Prepare output hardware
 	snd_pcm_prepare(o->outhandle);
-        snd_pcm_start(o->outhandle);
-
-        ast_mutex_unlock(&alsalock);
-
+    snd_pcm_start(o->outhandle);
+    ast_mutex_unlock(&alsalock);
 	return 0;
 }
 
