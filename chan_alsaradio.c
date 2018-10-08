@@ -1341,12 +1341,15 @@ if (!(c = ast_channel_alloc(1, state, o->cid_num, o->cid_name, "", ext, ctx, NUL
 	ast_channel_stage_snapshot(c);
 
 	ast_channel_tech_set(c, &alsaradio_tech);
-	if (o->sounddev < 0) 
-		setformat(o, O_RDWR);
+	if (o->sounddev < 0)
+	{
+		if (setformat(o, O_RDWR) == -1)
+			return NULL;
+	}
 	ast_channel_set_fd(c, 0, o->sounddev); /* -1 if device closed, override later */
 	ast_channel_set_readformat(c, ast_format_slin);
 	ast_channel_set_writeformat(c, ast_format_slin);
-	ast_channel_nativeformats_set(c, alsaradio_tech.capabilities); 	/* Maybe need to be set to ast_format_slin*/
+	ast_channel_nativeformats_set(c, alsaradio_tech.capabilities);
 	ast_channel_tech_pvt_set(c, o);
 
 	if (!ast_strlen_zero(o->language))
@@ -1402,7 +1405,7 @@ static struct ast_channel *alsaradio_request(const char *type, int format, void 
 	}
 	if (o == NULL)
 	{
-		ast_log(LOG_NOTICE, "Device %s not found\n", (char *) data);
+		ast_log(LOG_ERROR, "Device %s not found\n", (char *) data);
 		return NULL;
 	}
 	if ((format & AST_FORMAT_SLIN) == 0)
@@ -1418,7 +1421,7 @@ static struct ast_channel *alsaradio_request(const char *type, int format, void 
 	}
 	if ((c = alsaradio_new(o, NULL, NULL, AST_STATE_DOWN)) == NULL)
 	{
-		ast_log(LOG_WARNING, "Unable to create new aradio channel\n");
+		ast_log(LOG_ERROR, "Unable to create new aradio channel\n");
 		return NULL;
 	}
 	return c;
