@@ -45,23 +45,23 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include <alsa/asoundlib.h>
 #include <math.h>
 
-#define DEBUG_CAPTURES	 		1
+#define DEBUG_CAPTURES	 				1
 
-#define RX_CAP_RAW_FILE			"/tmp/rx_cap_in.pcm"
-#define TX_CAP_RAW_FILE			"/tmp/tx_cap_in.pcm"
+#define RX_CAP_RAW_FILE					"/tmp/rx_cap_in.pcm"
+#define TX_CAP_RAW_FILE					"/tmp/tx_cap_in.pcm"
 
 #define	MIXER_PARAM_MIC_PLAYBACK_SW 	"Mic Playback Switch"
 #define MIXER_PARAM_MIC_PLAYBACK_VOL 	"Mic Playback Volume"
-#define	MIXER_PARAM_MIC_CAPTURE_SW 	"Mic Capture Switch"
+#define	MIXER_PARAM_MIC_CAPTURE_SW 		"Mic Capture Switch"
 #define	MIXER_PARAM_MIC_CAPTURE_VOL 	"Mic Capture Volume"
-#define	MIXER_PARAM_MIC_BOOST 		"Auto Gain Control"
+#define	MIXER_PARAM_MIC_BOOST 			"Auto Gain Control"
 #define	MIXER_PARAM_SPKR_PLAYBACK_SW 	"Speaker Playback Switch"
 #define	MIXER_PARAM_SPKR_PLAYBACK_VOL 	"Speaker Playback Volume"
 
-#define	DELIMCHR ','
-#define	QUOTECHR 34
+#define	DELIMCHR 						','
+#define	QUOTECHR 						34
 
-#define	READERR_THRESHOLD 50
+#define	READERR_THRESHOLD 				50
 
 #ifdef __linux
 #include <linux/soundcard.h>
@@ -95,14 +95,12 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include "asterisk/stasis_channels.h"
 
 /* ALSA and serial stuff */
-#define ALSA_INDEV		"default"
-#define ALSA_OUTDEV		"default"
-#define DESIRED_RATE		8000
-#define SERIAL_DEV		"/dev/ttyS0"
-
-/* Lets use 160 sample frames, just like GSM.  */
-#define FRAME_SIZE 160
-#define PERIOD_FRAMES 80		/* 80 Frames, at 2 bytes each */
+#define ALSA_INDEV					"default"
+#define ALSA_OUTDEV					"default"
+#define DESIRED_RATE				8000
+#define SERIAL_DEV					"/dev/ttyS0"
+#define FRAME_SIZE 					160 /* Lets use 160 sample frames, just like GSM.  */
+#define PERIOD_FRAMES 				80	/* 80 Frames, at 2 bytes each */
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 static snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
@@ -118,15 +116,15 @@ static int alsaradio_debug = 0;
    with 160 sample frames, and a buffer size of 3, we have a 60ms buffer, 
    usually plenty. */
 
-#define MAX_BUFFER_SIZE 100
+#define MAX_BUFFER_SIZE 			100
 
 int sim_cor = 0;		/* used to simulate COR active */
 
 /* ALSA and serial stuff end */
 
-#define O_CLOSE	0x444
+#define O_CLOSE						0x444
 
-#define	NTAPS 31
+#define	NTAPS 						31
 
 /*! Global jitterbuffer configuration - by default, jb is disabled */
 static struct ast_jb_conf default_jbconf =
@@ -264,20 +262,20 @@ END_CONFIG
  *		(otherwise it will never be full).
  */
 
-#define FRAME_SIZE	160
-#define	QUEUE_SIZE	5
+#define FRAME_SIZE				160
+#define	QUEUE_SIZE				5
 
 #if defined(__FreeBSD__)
-#define	FRAGS	0x8
+#define	FRAGS					0x8
 #else
-#define	FRAGS	( ( (5 * 6) << 16 ) | 0xa )
+#define	FRAGS					( ( (5 * 6) << 16 ) | 0xa )
 #endif
 
 /*
  * XXX text message sizes are probably 256 chars, but i am
  * not sure if there is a suitable definition anywhere.
  */
-#define TEXT_SIZE	256
+#define TEXT_SIZE				256
 
 #ifndef MIN
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -337,8 +335,8 @@ struct chan_alsaradio_pvt {
 
 	int warned;					/* various flags used for warnings */
 #define WARN_used_blocks	1
-#define WARN_speed		2
-#define WARN_frag		4
+#define WARN_speed			2
+#define WARN_frag			4
 	int w_errors;				/* overfull in the write path */
 	struct timeval lastopen;
 
@@ -348,8 +346,8 @@ struct chan_alsaradio_pvt {
 	/* boost support. BOOST_SCALE * 10 ^(BOOST_MAX/20) must
 	 * be representable in 16 bits to avoid overflows.
 	 */
-#define	BOOST_SCALE	(1<<9)
-#define	BOOST_MAX	40			/* slightly less than 7 bits */
+#define	BOOST_SCALE			(1<<9)
+#define	BOOST_MAX			40			/* slightly less than 7 bits */
 	int boost;					/* input boost, scaled by BOOST_SCALE */
 	char devicenum;
 	char devstr[128];
