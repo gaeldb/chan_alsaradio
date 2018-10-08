@@ -1,7 +1,3 @@
-
-// Really need to understand that...
-#define	NEW_ASTERISK 
-
 /*
  * Copyright (C) 2010, Bogdan Diaconescu
  *
@@ -97,16 +93,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include "asterisk/format_compatibility.h"
 #include "asterisk/format_cache.h"
 #include "asterisk/stasis_channels.h"
-
-#ifndef	NEW_ASTERISK
-
-/* ringtones we use */
-#include "busy.h"
-#include "ringtone.h"
-#include "ring10.h"
-#include "answer.h"
-
-#endif
 
 /* ALSA and serial stuff */
 #define ALSA_INDEV		"default"
@@ -326,19 +312,6 @@ struct sound {
 	int repeat;
 };
 
-#ifndef	NEW_ASTERISK
-
-static struct sound sounds[] = {
-	{ AST_CONTROL_RINGING, "RINGING", ringtone, sizeof(ringtone)/2, 16000, 32000, 1 },
-	{ AST_CONTROL_BUSY, "BUSY", busy, sizeof(busy)/2, 4000, 4000, 1 },
-	{ AST_CONTROL_CONGESTION, "CONGESTION", busy, sizeof(busy)/2, 2000, 2000, 1 },
-	{ AST_CONTROL_RING, "RING10", ring10, sizeof(ring10)/2, 16000, 32000, 1 },
-	{ AST_CONTROL_ANSWER, "ANSWER", answer, sizeof(answer)/2, 2200, 0, 0 },
-	{ -1, NULL, 0, 0, 0, 0 },	/* end marker */
-};
-
-#endif
-
 /*
  * descriptor for one of our channels.
  * There is one used for 'default' values (from the [general] entry in
@@ -348,22 +321,7 @@ static struct sound sounds[] = {
  */
 struct chan_alsaradio_pvt {
 	struct chan_alsaradio_pvt *next;
-
 	char *name;
-#ifndef	NEW_ASTERISK
-	/*
-	 * cursound indicates which in struct sound we play. -1 means nothing,
-	 * any other value is a valid sound, in which case sampsent indicates
-	 * the next sample to send in [0..samplen + silencelen]
-	 * nosound is set to disable the audio data from the channel
-	 * (so we can play the tones etc.).
-	 */
-	int sndcmd[2];				/* Sound command pipe */
-	int cursound;				/* index of sound to send */
-	int sampsent;				/* # of sound samples sent  */
-	int nosound;				/* set to block audio from the PBX */
-#endif
-
 	int devtype;				/* actual type of device */
 	int pttkick[2];
 	int total_blocks;			/* total blocks in the output device */
@@ -398,9 +356,6 @@ struct chan_alsaradio_pvt {
 	int spkrmax;
 	int micmax;
 
-#ifndef	NEW_ASTERISK
-	pthread_t sthread;
-#endif
 	pthread_t serthread;
 
 	int stopser;
@@ -496,9 +451,6 @@ struct chan_alsaradio_pvt {
 };
 
 static struct chan_alsaradio_pvt alsaradio_default = {
-#ifndef	NEW_ASTERISK
-	.cursound = -1,
-#endif
 	.sounddev = -1,
 	.duplex = 1,
 	.autoanswer = 1,
@@ -707,10 +659,7 @@ static void *serthread(void *arg)
 	struct ast_config *cfg1;
 	struct ast_variable *v;
 	ast_fdset rfds;
-
-#ifdef	NEW_ASTERISK
 	struct ast_flags zeroflag = {0};
-#endif
 
         while(!o->stopser)
         {
@@ -728,13 +677,8 @@ static void *serthread(void *arg)
         if (option_verbose > 1)
                ast_verbose(VERBOSE_PREFIX_2 "Set device %s to %s\n",o->devstr,o->name);
 		mixer_write(o);
-
 		snprintf(fname,sizeof(fname) - 1,config1,o->name);
-#ifdef	NEW_ASTERISK
 		cfg1 = ast_config_load(fname,zeroflag);
-#else
-		cfg1 = ast_config_load(fname);
-#endif
 		o->rxmixerset = 500;
 		o->txmixaset = 500;
 		o->txmixbset = 500;
@@ -813,147 +757,6 @@ static void *serthread(void *arg)
 	}
         pthread_exit(NULL);
 }
-
-#ifndef	NEW_ASTERISK
-
-/*
- * Handler for 'sound writable' events from the sound thread.
- * Builds a frame from the high level description of the sounds,
- * and passes it to the audio device.
- * The actual sound is made of 1 or more sequences of sound samples
- * (s->datalen, repeated to make s->samplen samples) followed by
- * s->silencelen samples of silence. The position in the sequence is stored
- * in o->sampsent, which goes between 0 .. s->samplen+s->silencelen.
- * In case we fail to write a frame, don't update o->sampsent.
- */
-static void send_sound(struct chan_alsaradio_pvt *o)
-{
-	short myframe[FRAME_SIZE];
-	int ofs, l, start;
-	int l_sampsent = o->sampsent;
-	struct sound *s;
-	struct ast_frame f;
-
-	if (o->cursound < 0)		/* no sound to send */
-		return;
-
-	s = &sounds[o->cursound];
-
-	for (ofs = 0; ofs < FRAME_SIZE; ofs += l) {
-		l = s->samplen - l_sampsent;	/* # of available samples */
-		if (l > 0) {
-			start = l_sampsent % s->datalen;	/* source offset */
-			if (l > FRAME_SIZE - ofs)	/* don't overflow the frame */
-				l = FRAME_SIZE - ofs;
-			if (l > s->datalen - start)	/* don't overflow the source */
-				l = s->datalen - start;
-			bcopy(s->data + start, myframe + ofs, l * 2);
-			if (0)
-				ast_log(LOG_WARNING, "send_sound sound %d/%d of %d into %d\n", l_sampsent, l, s->samplen, ofs);
-			l_sampsent += l;
-			static const short silence[FRAME_SIZE] = { 0, };
-
-			l += s->silencelen;
-			if (l > 0) {
-				if (l > FRAME_SIZE - ofs)
-					l = FRAME_SIZE - ofs;
-				bcopy(silence, myframe + ofs, l * 2);
-				l_sampsent += l;
-			} else {			/* silence is over, restart sound if loop */
-				if (s->repeat == 0) {	/* last block */
-					o->cursound = -1;
-					o->nosound = 0;	/* allow audio data */
-					if (ofs < FRAME_SIZE)	/* pad with silence */
-						bcopy(silence, myframe + ofs, (FRAME_SIZE - ofs) * 2);
-				}
-				l_sampsent = 0;
-			}
-		}
-	}
-
-	f.frametype = AST_FRAME_VOICE;
-	/* patch 13: was 	f.subclass = AST_FORMAT_SLIN; */
-	f.subclass.format = ast_format_slin;
-	f.samples = FRAME_SIZE;
-	f.datalen = FRAME_SIZE * 2;
-	f.data = myframe;
-	f.offset = AST_FRIENDLY_OFFSET;
-	f.src = alsaradio_tech.type;
-	f.mallocd = 0;
-
-	l = alsa_write(o, &f);
-	if (l > 0)
-		o->sampsent = l_sampsent;	/* update status */
-}
-
-static void *sound_thread(void *arg)
-{
-	struct chan_alsaradio_pvt *o = (struct chan_alsaradio_pvt *) arg;
-
-	ast_fdset rfds;
-	ast_fdset wfds;
-	int max, res;
-
-	for (;;) {
-		FD_ZERO(&rfds);
-		FD_ZERO(&wfds);
-		max = o->sndcmd[0];
-		FD_SET(o->sndcmd[0], &rfds);
-		if (o->cursound > -1) {
-			FD_SET(o->outdev, &wfds);
-			if (o->outdev > max)
-				max = o->outdev;
-		}
-#ifdef ALSA_MONITOR
-		if (!alsa.owner) {
-			FD_SET(o->indev, &rfds);
-			if (o->indev > max)
-				max = indev;
-		}
-#endif
-		res = ast_select(max + 1, &rfds, &wfds, NULL, NULL);
-		if (res < 1) {
-			ast_log(LOG_WARNING, "select failed: %s\n", strerror(errno));
-			continue;
-		}
-
-#ifdef ALSA_MONITOR
-		if (FD_ISSET(o->indev, &rfds)) {
-			/* Keep the pipe going with read audio */
-			snd_pcm_state_t state;
-			short buf[FRAME_SIZE];
-			int r;
-
-			state = snd_pcm_state(alsa.ocard);
-			if (state == SND_PCM_STATE_XRUN) {
-				snd_pcm_prepare(alsa.ocard);
-			}
-			r = snd_pcm_readi(o->inhandle, buf, FRAME_SIZE);
-			if (r == -EPIPE) {
-				if (alsaradio_debug)
-					ast_log(LOG_ERROR, "XRUN read\n");
-				snd_pcm_prepare(o->inhandle);
-			} else if (r == -ESTRPIPE) {
-				ast_log(LOG_ERROR, "-ESTRPIPE\n");
-				snd_pcm_prepare(o->inhandle);
-			} else if (r < 0) {
-				ast_log(LOG_ERROR, "Read error: %s\n", snd_strerror(r));
-			} else
-				alsa_monitor_read((char *) buf, r * 2);
-		}
-#endif
-		if (FD_ISSET(o->sndcmd[0], &rfds)) {
-			read(o->sndcmd[0], &o->cursound, sizeof(o->cursound));
-		}
-		if (FD_ISSET(o->outdev, &wfds))
-			send_sound(o);
-	}
-	/* Never reached */
-	return NULL;
-}
-
-
-#endif
 
 /*
  * reset and close the device if opened,
@@ -1047,9 +850,7 @@ static int alsaradio_text(struct ast_channel *c, const char *text)
 /* Play ringtone 'x' on device 'o' */
 static void ring(struct chan_alsaradio_pvt *o, int x)
 {
-#ifndef	NEW_ASTERISK
-	write(o->sndcmd[1], &x, sizeof(x));
-#endif
+	return;
 }
 
 /*
@@ -1081,15 +882,8 @@ static int alsaradio_call(struct ast_channel *c, char *dest, int timeout)
  */
 static int alsaradio_answer(struct ast_channel *c)
 {
-#ifndef	NEW_ASTERISK
-	struct chan_alsaradio_pvt *o = ast_channel_tech_pvt(c);
-#endif
-
+	ast_log(LOG_NOTICE, "alsaradio_answer()\n");
 	ast_setstate(c, AST_STATE_UP);
-#ifndef	NEW_ASTERISK
-	o->cursound = -1;
-	o->nosound = 0;
-#endif
 	return 0;
 }
 
@@ -1098,10 +892,6 @@ static int alsaradio_hangup(struct ast_channel *c)
 	struct chan_alsaradio_pvt *o = ast_channel_tech_pvt(c);
 
 	ast_log(LOG_NOTICE, "alsaradio_hangup()\n");
-#ifndef	NEW_ASTERISK
-	o->cursound = -1;
-	o->nosound = 0;
-#endif
 	/* Patch 13: was c->tech_pvt = NULL; */
 	ast_channel_tech_pvt_set(c, NULL);
 	o->owner = NULL;
@@ -1118,7 +908,7 @@ static int alsaradio_hangup(struct ast_channel *c)
 	}
 	o->stopser = 1;
 	o->stopwrite = 1;
-	pthread_join(o->serthread,NULL);
+	pthread_join(o->serthread, NULL);
 	return 0;
 }
 
@@ -1184,13 +974,6 @@ static int alsaradio_write(struct ast_channel *c, struct ast_frame *f)
 	struct ast_frame *f1;
 	int i, n;
 
-#ifndef	NEW_ASTERISK
-	/* Immediately return if no sound is enabled */
-	if (o->nosound)
-		return 0;
-	/* Stop any currently playing sound */
-	o->cursound = -1;
-#endif
 	/*
 	 * we could receive a block which is not a multiple of our
 	 * FRAME_SIZE, so buffer it locally and write to the device
@@ -1852,44 +1635,6 @@ static char radio_tune_usage[] =
 	"       save (settings to tuning file)\n"
 	"       load (tuning settings from EEPROM)\n"
 	"\n       All [newsetting]'s are values 0-999\n\n";
-					  
-#ifndef	NEW_ASTERISK
-
-static struct ast_cli_entry cli_alsaradio[] = {
-	{ { "aradio", "key", NULL },
-	console_key, "Radio PTT Key",
-	key_usage, NULL, NULL},
-
-	{ { "aradio", "unkey", NULL },
-	console_unkey, "Radio PTT Unkey",
-	unkey_usage, NULL, NULL },
-
-	{ { "aradio", "rkey", NULL },
-	console_rkey, "Radio COR active",
-	rkey_usage, NULL, NULL},
-
-	{ { "aradio", "runkey", NULL },
-	console_runkey, "Radio COR inactive",
-	runkey_usage, NULL, NULL },
-
-	{ { "aradio", "tune", NULL },
-	radio_tune, "Radio Tune",
-	radio_tune_usage, NULL, NULL },
-
-	{ { "aradio", "set", "debug", NULL },
-	radio_set_debug, "Radio Debug",
-	radio_tune_usage, NULL, NULL },
-
-	{ { "aradio", "set", "debug", "off", NULL },
-	radio_set_debug_off, "Radio Debug",
-	radio_tune_usage, NULL, NULL },
-
-	{ { "aradio", "active", NULL },
-	radio_active, "Change commanded device",
-	active_usage, NULL, NULL },
-
-};
-#endif
 
 static void store_rxcdtype(struct chan_alsaradio_pvt *o, char *s)
 {
@@ -1905,7 +1650,6 @@ static void store_rxcdtype(struct chan_alsaradio_pvt *o, char *s)
 	else {
 		ast_log(LOG_WARNING,"Unrecognized rxcdtype parameter: %s\n",s);
 	}
-
 	ast_log(LOG_WARNING, "set rxcdtype = %s\n", s);
 }
 /*
@@ -2036,24 +1780,9 @@ static struct chan_alsaradio_pvt *store_config(struct ast_config *cfg, char *ctg
 	o->dsp = ast_dsp_new();
 	if (o->dsp)
 	{
-#ifdef  NEW_ASTERISK
-          ast_dsp_set_features(o->dsp,DSP_FEATURE_DIGIT_DETECT);
-          ast_dsp_set_digitmode(o->dsp,DSP_DIGITMODE_DTMF | DSP_DIGITMODE_MUTECONF | DSP_DIGITMODE_RELAXDTMF);
-#else
-          ast_dsp_set_features(o->dsp,DSP_FEATURE_DTMF_DETECT);
-          ast_dsp_digitmode(o->dsp,DSP_DIGITMODE_DTMF | DSP_DIGITMODE_MUTECONF | DSP_DIGITMODE_RELAXDTMF);
-#endif
+		ast_dsp_set_features(o->dsp,DSP_FEATURE_DIGIT_DETECT);
+		ast_dsp_set_digitmode(o->dsp,DSP_DIGITMODE_DTMF | DSP_DIGITMODE_MUTECONF | DSP_DIGITMODE_RELAXDTMF);
 	}
-
-#ifndef	NEW_ASTERISK
-	if (pipe(o->sndcmd) != 0) {
-		ast_log(LOG_ERROR, "Unable to create pipe\n");
-		goto error;
-	}
-
-	ast_pthread_create_background(&o->sthread, NULL, sound_thread, o);
-#endif
-
 	/* link into list of devices */
 	if (o != &alsaradio_default) {
 		o->next = alsaradio_default.next;
@@ -2067,8 +1796,6 @@ static struct chan_alsaradio_pvt *store_config(struct ast_config *cfg, char *ctg
 		free(o);
 	return NULL;*/
 }
-
-#ifdef	NEW_ASTERISK
 
 static char *res2cli(int r)
 {
@@ -2205,8 +1932,6 @@ static struct ast_cli_entry cli_alsaradio[] = {
 	AST_CLI_DEFINE(handle_aradio_debug_off,"aradio Debug Off"),
 	AST_CLI_DEFINE(handle_aradio_active,"Change commanded device")
 };
-
-#endif
 
 static snd_pcm_t *alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pcm_stream_t stream)
 {
@@ -2494,12 +2219,8 @@ static int load_module(void)
 	memcpy(&global_jbconf, &default_jbconf, sizeof(struct ast_jb_conf));
 
 	/* load config file */
-#ifdef	NEW_ASTERISK
 	if (!(cfg = ast_config_load(config,zeroflag))) {
-#else
-	if (!(cfg = ast_config_load(config))) {
-#endif
-		ast_log(LOG_NOTICE, "Unable to load config %s\n", config);
+		ast_log(LOG_WARNING, "Unable to load config %s\n", config);
 		return AST_MODULE_LOAD_DECLINE;
 	}
 
@@ -2538,12 +2259,6 @@ static int unload_module(void)
 		#endif
 
 		close(o->sounddev);
-#ifndef	NEW_ASTERISK
-		if (o->sndcmd[0] > 0) {
-			close(o->sndcmd[0]);
-			close(o->sndcmd[1]);
-		}
-#endif
 		if (o->dsp) ast_dsp_free(o->dsp);
 		if (o->owner)
 			ast_softhangup(o->owner, AST_SOFTHANGUP_APPUNLOAD);
