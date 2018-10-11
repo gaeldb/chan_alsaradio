@@ -376,11 +376,7 @@ struct chan_alsaradio_pvt {
 	 */
 	char alsaradio_read_buf[FRAME_SIZE * 4 * 6];
 	char alsaradio_read_frame_buf[FRAME_SIZE * 2 + AST_FRIENDLY_OFFSET];
-#ifdef 	OLD_ASTERISK
-	AST_LIST_HEAD(, ast_frame) txq;
-#else
 	AST_LIST_HEAD_NOLOCK(, ast_frame) txq;
-#endif
 	ast_mutex_t  txqlock;
 	int readpos;				/* read position above */
 	struct ast_frame read_f;	/* returned by alsaradio_read */
@@ -482,8 +478,7 @@ static void mixer_write(struct chan_alsaradio_pvt *o);
 
 static char *alsaradio_active;	 /* the active device */
 
-static struct ast_channel *alsaradio_request(const char *type, int format, void *data
-, int *cause);
+static struct ast_channel *alsaradio_request(const char *type, struct ast_format_cap *cap, const struct ast_assigned_ids *assignedids, const struct ast_channel *requestor, const char *data, int *cause);
 static int alsaradio_digit_begin(struct ast_channel *c, char digit);
 static int alsaradio_digit_end(struct ast_channel *c, char digit, unsigned int duration);
 static int alsaradio_text(struct ast_channel *c, const char *text);
@@ -520,6 +515,7 @@ static struct ast_channel_tech alsaradio_tech = {
 	.hangup = alsaradio_hangup,
 	.answer = alsaradio_answer,
 	.read = alsaradio_read,
+
 	.call = alsaradio_call,
 	.write = alsaradio_write,
 	.indicate = alsaradio_indicate,
@@ -626,7 +622,8 @@ static void kickptt(struct chan_alsaradio_pvt *o)
 }
 
 /*
- * returns a pointer to the descriptor with the given name
+ * Parse the chained list alsaradio_default and returns a pointer
+ * to the descriptor with the given dev name.
  */
 static struct chan_alsaradio_pvt *find_desc(const char *dev)
 {
@@ -641,7 +638,7 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 		ast_log(LOG_WARNING, "could not find <%s>\n", dev ? dev : "--no-device--");
 		pthread_exit(NULL);
 	}
-
+	ast_log(LOG_NOTICE, "Founded device %s at <%p>\n", dev, o);
 	return o;
 }
 
@@ -765,7 +762,6 @@ static int setformat(struct chan_alsaradio_pvt *o, int mode)
 {
 	alsa_card_uninit(o);
 	serial_uninit(o);
-
 	switch(mode){
 		case O_RDWR:
 			if (alsa_card_init(o, o->indevname, SND_PCM_STREAM_CAPTURE) == NULL)
@@ -1330,16 +1326,13 @@ static int alsaradio_setoption(struct ast_channel *chan, int option, void *data,
 /*
  * allocate a new channel.
  */
-static struct ast_channel *alsaradio_new(struct chan_alsaradio_pvt *o, char *ext, char *ctx, int state)
+static struct ast_channel *alsaradio_new(struct chan_alsaradio_pvt *o, int state, const struct ast_assigned_ids *assignedids, const struct ast_channel *requestor)
 {
 	struct ast_channel *c = NULL;
 
-if (!(c = ast_channel_alloc(1, state, o->cid_num, o->cid_name, "", ext, ctx, NULL, NULL, 0, "alsaradio/%s", o->name)))
+	if (!(c = ast_channel_alloc(1, state, 0, 0, "", o->ext, o->ctx, assignedids, requestor, 0, "alsaradio/%s", o->name)))
 		return NULL;
-
-	/* new in patch 13 */
 	ast_channel_stage_snapshot(c);
-
 	ast_channel_tech_set(c, &alsaradio_tech);
 	if (o->sounddev < 0)
 	{
@@ -1367,15 +1360,14 @@ if (!(c = ast_channel_alloc(1, state, o->cid_num, o->cid_name, "", ext, ctx, NUL
 */
 
 	/* new in patch 13 */
-	if (!ast_strlen_zero(ctx))
-		ast_channel_context_set(c, ctx);
-	if (!ast_strlen_zero(ext))
-		ast_channel_exten_set(c, ext);
+	if (!ast_strlen_zero(o->ctx))
+		ast_channel_context_set(c, o->ctx);
+	if (!ast_strlen_zero(o->ext))
+		ast_channel_exten_set(c, o->ext);
 
 	o->owner = c;
 	ast_module_ref(ast_module_info->self);
 	ast_jb_configure(c, &global_jbconf);
-
 	/* new in patch 13 */
 	ast_channel_stage_snapshot_done(c);
 	ast_channel_unlock(c);
@@ -1392,38 +1384,47 @@ if (!(c = ast_channel_alloc(1, state, o->cid_num, o->cid_name, "", ext, ctx, NUL
 
 	return c;
 }
+
 /*
 */
-static struct ast_channel *alsaradio_request(const char *type, int format, void *data, int *cause)
+static struct ast_channel *alsaradio_request(
+	const char *type,
+	struct ast_format_cap *cap,
+	const struct ast_assigned_ids *assignedids, 
+	const struct ast_channel *requestor,
+	const char *data,
+	int *cause)
 {
-	struct ast_channel *c = NULL;
-	struct chan_alsaradio_pvt *o = find_desc(data);
+	struct ast_channel 			*c = NULL;
+	struct chan_alsaradio_pvt 	*o = find_desc(data);
+	struct ast_str 				*codec_buf = ast_str_alloca(AST_FORMAT_CAP_NAMES_LEN);
 
 	if (o->debuglevel)
-	{
-		ast_log(LOG_NOTICE, "alsaradio_request type <%s> data 0x%p <%s>\n", type, data, (char *) data);
-	}
+		ast_log(LOG_NOTICE, "alsaradio_request type:%s, dev:%s, format:%s\n",
+			type, data, ast_format_cap_get_names(cap, &codec_buf));
 	if (o == NULL)
 	{
-		ast_log(LOG_ERROR, "Device %s not found\n", (char *) data);
+		ast_log(LOG_ERROR, "Device %s not found\n", data);
 		return NULL;
 	}
-	if ((format & AST_FORMAT_SLIN) == 0)
+	if (ast_format_cap_iscompatible_format(cap, ast_format_slin) == AST_FORMAT_CMP_NOT_EQUAL)
 	{
-		ast_log(LOG_WARNING, "Format 0x%x unsupported\n", format);
+		ast_log(LOG_WARNING, "Format '%s' unsupported\n", ast_format_cap_get_names(cap, &codec_buf));
 		return NULL;
 	}
 	if (o->owner)
 	{
-		ast_log(LOG_NOTICE, "Already have a call (chan %p) on the aradio channel\n", o->owner);
+		ast_log(LOG_NOTICE, "Already have a call (channel %s <%p>) on the aradio channel\n",
+			(char *) o->name, o->owner);
 		*cause = AST_CAUSE_BUSY;
 		return NULL;
 	}
-	if ((c = alsaradio_new(o, NULL, NULL, AST_STATE_DOWN)) == NULL)
-	{
+	ast_mutex_lock(&alsalock);
+	if ((c = alsaradio_new(o, AST_STATE_DOWN, assignedids, requestor)) == NULL)
 		ast_log(LOG_ERROR, "Unable to create new aradio channel\n");
-		return NULL;
-	}
+	else if (o->debuglevel)
+		ast_log(LOG_NOTICE, "Alsaradio channel created\n");
+	ast_mutex_unlock(&alsalock);
 	return c;
 }
 /*
