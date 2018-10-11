@@ -654,9 +654,9 @@ static void *serthread(void *arg)
 	ast_fdset rfds;
 	struct ast_flags zeroflag = {0};
 
-        while(!o->stopser)
-        {
-                time(&o->lastsertime);
+    while(!o->stopser)
+    {
+        time(&o->lastsertime);
 
 		//o->micmax = amixer_max(o->devicenum,MIXER_PARAM_MIC_CAPTURE_VOL);
 		//o->spkrmax = amixer_max(o->devicenum,MIXER_PARAM_SPKR_PLAYBACK_VOL);
@@ -666,16 +666,15 @@ static void *serthread(void *arg)
 		    ast_log(LOG_ERROR,"Not able to create pipe\n");
 			pthread_exit(NULL);
 		}
-		ast_log(LOG_NOTICE, "serthread: Starting normally on %s!!\n",o->name);
-        if (option_verbose > 1)
-               ast_verbose(VERBOSE_PREFIX_2 "Set device %s to %s\n",o->serdevname,o->name);
+		ast_log(LOG_NOTICE, "[%s] starting normally on %s\n",o->name, o->serdevname);
 		mixer_write(o);
 		snprintf(fname,sizeof(fname) - 1,config1,o->name);
 		cfg1 = ast_config_load(fname,zeroflag);
 		o->rxmixerset = 500;
 		o->txmixaset = 500;
 		o->txmixbset = 500;
-		if (cfg1) {
+		if (cfg1)
+		{
 			for (v = ast_variable_browse(cfg1, o->name); v; v = v->next) {
 	
 				M_START((char *)v->name, (char *)v->value);
@@ -687,7 +686,9 @@ static void *serthread(void *arg)
 			}
 			ast_config_destroy(cfg1);
 			ast_log(LOG_WARNING,"Loaded parameters from %s for device %s .\n",fname,o->name);
-		} else ast_log(LOG_WARNING,"File %s not found, device %s using default parameters.\n",fname,o->name);
+		}
+		else 
+			ast_log(LOG_WARNING,"File %s not found, device %s using default parameters.\n",fname,o->name);
 
 		while(!o->stopser)
 		{
@@ -748,7 +749,7 @@ static void *serthread(void *arg)
 		}
 		o->lasttx = 0;
 	}
-        pthread_exit(NULL);
+    pthread_exit(NULL);
 }
 
 /*
@@ -1941,7 +1942,7 @@ static snd_pcm_t *alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pc
 	snd_pcm_hw_params_t *hwparams = NULL;
 	snd_pcm_sw_params_t *swparams = NULL;
 	struct pollfd pfd;
-	snd_pcm_uframes_t period_size = FRAME_SIZE*2;
+	snd_pcm_uframes_t period_size = PERIOD_FRAMES * 4;
 	snd_pcm_uframes_t buffer_size = 0;
 	unsigned int rate = DESIRED_RATE;
 	snd_pcm_uframes_t start_threshold, stop_threshold;
