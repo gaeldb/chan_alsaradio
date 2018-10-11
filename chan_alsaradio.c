@@ -637,7 +637,7 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 		ast_log(LOG_WARNING, "could not find <%s>\n", dev ? dev : "--no-device--");
 		pthread_exit(NULL);
 	}
-	ast_log(LOG_NOTICE, "Founded device %s at <%p>\n", dev, o);
+	ast_log(LOG_NOTICE, "Found device %s at <%p>\n", dev, o);
 	return o;
 }
 
