@@ -485,7 +485,7 @@ static int alsaradio_text(struct ast_channel *c, const char *text);
 static int alsaradio_hangup(struct ast_channel *c);
 static int alsaradio_answer(struct ast_channel *c);
 static struct ast_frame *alsaradio_read(struct ast_channel *chan);
-static int alsaradio_call(struct ast_channel *c, char *dest, int timeout);
+static int alsaradio_call(struct ast_channel *c, const char *dest, int timeout);
 static int alsaradio_write(struct ast_channel *chan, struct ast_frame *f);
 static int alsaradio_indicate(struct ast_channel *chan, int cond, const void *data, size_t datalen);
 static int alsaradio_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
@@ -515,7 +515,6 @@ static struct ast_channel_tech alsaradio_tech = {
 	.hangup = alsaradio_hangup,
 	.answer = alsaradio_answer,
 	.read = alsaradio_read,
-
 	.call = alsaradio_call,
 	.write = alsaradio_write,
 	.indicate = alsaradio_indicate,
@@ -850,7 +849,7 @@ static void ring(struct chan_alsaradio_pvt *o, int x)
 /*
  * handler for incoming calls. Either autoanswer, or start ringing
  */
-static int alsaradio_call(struct ast_channel *c, char *dest, int timeout)
+static int alsaradio_call(struct ast_channel *c, const char *dest, int timeout)
 {
 	struct chan_alsaradio_pvt *o = ast_channel_tech_pvt(c);
 
