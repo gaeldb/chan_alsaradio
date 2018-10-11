@@ -290,6 +290,7 @@ static char *config1 = "alsaradio_tune_%s.conf";	/* tune config file */
 static FILE *frxcapraw = NULL;
 static FILE *ftxcapraw = NULL;
 
+enum ptt_status {PTT_ON,PTT_OFF};
 enum {CD_IGNORE,SERIAL_DSR,SERIAL_DSR_INVERT};
 enum {SD_IGNORE,SERIAL_CTS,SERIAL_CTS_INVERT};		// no,external,externalinvert,software
 
@@ -501,8 +502,7 @@ static int serial_init(struct chan_alsaradio_pvt *o);
 static void serial_uninit(struct chan_alsaradio_pvt *o);
 static int serial_getcor(struct chan_alsaradio_pvt *o);
 static int serial_getctcss(struct chan_alsaradio_pvt *o);
-static int serial_pttkey(struct chan_alsaradio_pvt *o);
-static int serial_pttunkey(struct chan_alsaradio_pvt *o);
+static int serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
 
 static struct ast_channel_tech alsaradio_tech = {
 	.type = "alsaradio",
@@ -696,25 +696,25 @@ static void *serthread(void *arg)
 			to.tv_sec = 0;
 			to.tv_usec = 50000; 
 
+			/* 	Prepare ast_select reading on pipe o->pttkick[0]
+				Good to know ast_select emulates linux behaviour in terms of timeout handling */
 			FD_ZERO(&rfds);
 			FD_SET(o->pttkick[0],&rfds);
-			/* ast_select emulates linux behaviour in terms of timeout handling */
-			
-			/* Patch 13: was res = ast_select(o->pttkick[0] + 1, &rfds, NULL, NULL, &to); */
-			
 			res = ast_select(o->pttkick[0] + 1, &rfds, NULL, NULL, &to);
-
-			if (res < 0) {
+			if (res < 0)
+			{
 				ast_log(LOG_WARNING, "select failed: %s\n", strerror(errno));
 				usleep(10000);
 				continue;
 			}
+			// Check if select as something interresting to read for us
 			if (FD_ISSET(o->pttkick[0],&rfds))
 			{
 				char c;
-
 				read(o->pttkick[0],&c,1);
 			}
+
+
 
 			keyed = sim_cor || serial_getcor(o);
 			if (keyed != o->rxsersq)
@@ -735,15 +735,13 @@ static void *serthread(void *arg)
 			txreq = txreq || o->txtestkey;	
 			if (txreq && (!o->lasttx))
 			{
-				if (o->invertptt) serial_pttunkey(o);
-				else serial_pttkey(o);
-				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update PTT = %d\n",txreq);
+				serial_pttkey(o, PTT_ON);
+				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update PTT = %d\n", txreq);
 			}
 			else if ((!txreq) && o->lasttx)
 			{
-				if (o->invertptt) serial_pttkey(o);
-				else serial_pttunkey(o);
-				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update PTT = %d\n",txreq);
+				serial_pttkey(o, PTT_OFF);
+				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update PTT = %d\n", txreq);
 			}
 			o->lasttx = txreq;
 			time(&o->lastsertime);
@@ -2147,61 +2145,44 @@ static int serial_getctcss(struct chan_alsaradio_pvt *o)
 	return (status & TIOCM_CTS) ? 1 : 0; 
 }
 
-static int serial_pttkey(struct chan_alsaradio_pvt *o)
+/*
+ * This function push or release PTT by setting TIOCM_DTR in serial port
+ */
+static int 		serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 {
-	int ret, status;
+	int 		ret;
+	int 		status;
 
 	if (o->serdisable)
 	{
 		ast_log(LOG_ERROR, "Serial control is disable for device %s\n", o->serdevname);
 		return (0);
 	}
-	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
+	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0) /* Read current PTT status */
     {
         ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
-        return(-1);
+        return (-1);
     }
-
-	status |= TIOCM_DTR;
-	//status |= TIOCM_RTS;
-
-	if ((ret = ioctl(o->serdev, TIOCMSET, &status)) < 0)
-    {
-        ast_log(LOG_ERROR, "Unable to set modem lines for %s: %s\n", o->serdevname, strerror(errno));
-        return(-1);
-    }
-
-	return 0;
-}
-
-static int serial_pttunkey(struct chan_alsaradio_pvt *o)
-{
-	int ret, status;
-
-	if (o->serdisable)
+	if (o->invertptt) /* Revert switch for particular HW */
 	{
-		ast_log(LOG_ERROR, "Serial control is disable for device %s\n", o->serdevname);
-		return (0);
+		if (ptt == PTT_ON) ptt = PTT_OFF;
+		else if (ptt == PTT_OFF) ptt = PTT_ON;
 	}
-
-	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
-    {
-        ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
-        return(-1);
-    }
-
-	status &= ~TIOCM_DTR;
-	//status &= ~TIOCM_RTS;
-
-	if ((ret = ioctl(o->serdev, TIOCMSET, &status)) < 0)
+    if (ptt == PTT_ON)
+		status |= TIOCM_DTR;
+		//status |= TIOCM_RTS;
+	else if (ptt == PTT_OFF)
+		status &= ~TIOCM_DTR;
+		//status &= ~TIOCM_RTS;
+	else
+		return (-1);
+	if ((ret = ioctl(o->serdev, TIOCMSET, &status)) < 0) /* Push new PTT status in TIOCM */
     {
         ast_log(LOG_ERROR, "Unable to set modem lines for %s: %s\n", o->serdevname, strerror(errno));
-        return(-1);
+        return (-1);
     }
-
 	return 0;
 }
-
 
 /*
 */
