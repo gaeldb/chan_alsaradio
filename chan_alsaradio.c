@@ -350,7 +350,6 @@ struct chan_alsaradio_pvt {
 #define	BOOST_MAX			40			/* slightly less than 7 bits */
 	int boost;					/* input boost, scaled by BOOST_SCALE */
 	char devicenum;
-	char devstr[128];
 	int spkrmax;
 	int micmax;
 
@@ -669,7 +668,7 @@ static void *serthread(void *arg)
 		}
 		ast_log(LOG_NOTICE, "serthread: Starting normally on %s!!\n",o->name);
         if (option_verbose > 1)
-               ast_verbose(VERBOSE_PREFIX_2 "Set device %s to %s\n",o->devstr,o->name);
+               ast_verbose(VERBOSE_PREFIX_2 "Set device %s to %s\n",o->serdevname,o->name);
 		mixer_write(o);
 		snprintf(fname,sizeof(fname) - 1,config1,o->name);
 		cfg1 = ast_config_load(fname,zeroflag);
@@ -1477,7 +1476,7 @@ static int radio_tune(int fd, int argc, const char *const *argv)
 	if (argc == 2) /* just show stuff */
 	{
 		ast_cli(fd,"Active radio interface is [%s]\n",alsaradio_active);
-		ast_cli(fd,"Device String is %s\n",o->devstr);
+		ast_cli(fd,"Device String is %s\n",o->serdevname);
 		ast_cli(fd,"Rx Level currently set to %d\n",o->rxmixerset);
 		ast_cli(fd,"Tx Output A Level currently set to %d\n",o->txmixaset);
 		ast_cli(fd,"Tx Output B Level currently set to %d\n",o->txmixbset);
@@ -1590,7 +1589,7 @@ static int radio_active(int fd, int argc, const char *const *argv)
                 if (strcmp(argv[2], "show") == 0) {
                         for (o = alsaradio_default.next; o; o = o->next)
                                 ast_cli(fd, "device [%s] exists as device=%s\n", 
-					o->name,o->devstr);
+					o->name,o->serdevname);
                         return RESULT_SUCCESS;
                 }
                 o = find_desc(argv[2]);
@@ -1686,7 +1685,7 @@ static void tune_write(struct chan_alsaradio_pvt *o)
 
 	fprintf(fp,"; name=%s\n",o->name);
 	fprintf(fp,"; devicenum=%i\n",o->devicenum);
-	fprintf(fp,"devstr=%s\n",o->devstr);
+	fprintf(fp,"serdevname=%s\n",o->serdevname);
 	fprintf(fp,"rxmixerset=%i\n",o->rxmixerset);
 	fprintf(fp,"txmixaset=%i\n",o->txmixaset);
 	fprintf(fp,"txmixbset=%i\n",o->txmixbset);
