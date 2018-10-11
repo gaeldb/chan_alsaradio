@@ -692,6 +692,7 @@ static void *serthread(void *arg)
 
 		while(!o->stopser)
 		{
+			ast_log(LOG_NOTICE, "Start of loop\n");
 			to.tv_sec = 0;
 			to.tv_usec = 50000; 
 
@@ -746,6 +747,7 @@ static void *serthread(void *arg)
 			}
 			o->lasttx = txreq;
 			time(&o->lastsertime);
+			ast_log(LOG_NOTICE, "End of loop\n");
 		}
 		o->lasttx = 0;
 	}
