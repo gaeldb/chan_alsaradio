@@ -2097,17 +2097,19 @@ static int serial_init(struct chan_alsaradio_pvt *o)
 	return 0;
 }
 
-static void serial_uninit(struct chan_alsaradio_pvt *o)
+static void 		serial_uninit(struct chan_alsaradio_pvt *o)
 {
-	if (o->serdisable)
-		return;
-
-	if (o->serdev > 0)
+	if (o->serdisable || o->serdev <= 0)
 	{
-		close(o->serdev);
-		o->serdev = -1;
+		ast_log(LOG_NOTICE, "Serial device %s %s\n",
+			o->serdevname,
+			o->serdisable ? "is disabled" : "was already closed...");
+		return;
 	}
-
+	close(o->serdev);
+	o->serdev = -1;
+	ast_log(LOG_NOTICE, "Serial device %s closed\n", o->serdevname);
+	return;
 }
 
 static int serial_getcor(struct chan_alsaradio_pvt *o)
