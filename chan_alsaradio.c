@@ -707,9 +707,13 @@ static void *serthread(void *arg)
 		return (0);*/
 
 
+			//ast_log(LOG_NOTICE, "Serial FD: <%i> - Piep FD: <%i>\n", o->serdev, o->pttkick[0]);
+
 			FD_ZERO(&rfds);
 			FD_SET(o->serdev,&rfds);
-			res = ast_select(o->serdev + 1, &rfds, NULL, NULL, &to);
+			FD_SET(o->pttkick[0],&rfds);
+			/* Get the highter FD for select */
+			res = ast_select(o->serdev > o->pttkick[0] ? o->serdev + 1 : o->pttkick[0] + 1 , &rfds, NULL, NULL, &to);
 			if (res < 0)
 			{
 				ast_log(LOG_WARNING, "select failed: %s\n", strerror(errno));
@@ -717,14 +721,14 @@ static void *serthread(void *arg)
 				continue;
 			}
 			// Check if select as something interresting to read for us
-			if (FD_ISSET(o->serdev,&rfds))
+			if (FD_ISSET(o->pttkick[0],&rfds))
 			{
-				//char c;
-				ast_log(LOG_NOTICE, "Somtehing to read\n");
-				//read(o->pttkick[0],&c,1);
+				char c;
+				ast_log(LOG_NOTICE, "Somtehing to read in serdev\n");
+				read(o->pttkick[0],&c,1);
 			}
-			else
-				ast_log(LOG_NOTICE, "Nothing to read\n");
+
+			ast_log(LOG_NOTICE, "select return <%i>\n", res);
 
 
 /*
