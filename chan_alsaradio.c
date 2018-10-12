@@ -645,13 +645,15 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 static void *serthread(void *arg)
 {
 	unsigned char keyed,ctcssed,txreq;
-	char fname[200];
+	//char fname[200];
 	int res;
 	struct chan_alsaradio_pvt *o = (struct chan_alsaradio_pvt *) arg;
 	struct timeval to;
-	struct ast_config *cfg1;
-	struct ast_variable *v;
+	//struct ast_config *cfg1;
+	//struct ast_variable *v;
+
 	ast_fdset rfds;
+
 	struct ast_flags zeroflag = {0};
 
     while(!o->stopser)
@@ -666,9 +668,11 @@ static void *serthread(void *arg)
 		    ast_log(LOG_ERROR,"Not able to create pipe\n");
 			pthread_exit(NULL);
 		}
+
+
 		ast_log(LOG_NOTICE, "[%s] starting normally on %s\n",o->name, o->serdevname);
 		mixer_write(o);
-		snprintf(fname,sizeof(fname) - 1,config1,o->name);
+		/*snprintf(fname,sizeof(fname) - 1,config1,o->name);
 		cfg1 = ast_config_load(fname,zeroflag);
 		o->rxmixerset = 500;
 		o->txmixaset = 500;
@@ -689,18 +693,23 @@ static void *serthread(void *arg)
 		}
 		else 
 			ast_log(LOG_WARNING,"File %s not found, device %s using default parameters.\n",fname,o->name);
-
+		*/
 		while(!o->stopser)
 		{
-			ast_log(LOG_NOTICE, "Start of loop\n");
 			to.tv_sec = 0;
 			to.tv_usec = 50000; 
 
 			/* 	Prepare ast_select reading on pipe o->pttkick[0]
 				Good to know ast_select emulates linux behaviour in terms of timeout handling */
+
+			/* WHAT TO DO IF SERIAL IS DISABLED ????? */
+				/*if (o->serdisable)
+		return (0);*/
+
+
 			FD_ZERO(&rfds);
-			FD_SET(o->pttkick[0],&rfds);
-			res = ast_select(o->pttkick[0] + 1, &rfds, NULL, NULL, &to);
+			FD_SET(o->serdev,&rfds);
+			res = ast_select(o->serdev + 1, &rfds, NULL, NULL, &to);
 			if (res < 0)
 			{
 				ast_log(LOG_WARNING, "select failed: %s\n", strerror(errno));
@@ -708,14 +717,17 @@ static void *serthread(void *arg)
 				continue;
 			}
 			// Check if select as something interresting to read for us
-			if (FD_ISSET(o->pttkick[0],&rfds))
+			if (FD_ISSET(o->serdev,&rfds))
 			{
-				char c;
-				read(o->pttkick[0],&c,1);
+				//char c;
+				ast_log(LOG_NOTICE, "Somtehing to read\n");
+				//read(o->pttkick[0],&c,1);
 			}
+			else
+				ast_log(LOG_NOTICE, "Nothing to read\n");
 
 
-
+/*
 			keyed = sim_cor || serial_getcor(o);
 			if (keyed != o->rxsersq)
 			{
@@ -729,6 +741,7 @@ static void *serthread(void *arg)
 				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update rxserctcss = %d\n",ctcssed);
 				o->rxserctcss = ctcssed;
 			}
+			*/
 			ast_mutex_lock(&o->txqlock);
 			txreq = o->txkeyed;			//!(AST_LIST_EMPTY(&o->txq));
 			ast_mutex_unlock(&o->txqlock);
@@ -745,7 +758,7 @@ static void *serthread(void *arg)
 			}
 			o->lasttx = txreq;
 			time(&o->lastsertime);
-			ast_log(LOG_NOTICE, "End of loop\n");
+			//ast_log(LOG_NOTICE, "End of loop\n");
 		}
 		o->lasttx = 0;
 	}
@@ -2072,6 +2085,7 @@ static int serial_init(struct chan_alsaradio_pvt *o)
 		ast_log(LOG_ERROR, "Unable to open serial device %s: %s\n", o->serdevname, strerror(errno));
 		return(-1);
 	}
+
 
 	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
         {
