@@ -276,6 +276,7 @@ END_CONFIG
  * not sure if there is a suitable definition anywhere.
  */
 #define TEXT_SIZE				256
+#define COMMAND_BUFFER_SIZE		256
 
 #ifndef MIN
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -436,9 +437,11 @@ struct chan_alsaradio_pvt {
 	snd_pcm_t *outhandle;
 
 	/* serial stuff */
-	char serdevname[256];
-	int serdisable;
-	int serdev;
+	char 				serdevname[TEXT_SIZE];
+	int 				serdisable;
+	int 				serdev;
+	char 				sercommandbuf[COMMAND_BUFFER_SIZE];
+	ast_mutex_t  		sercommandlock;
 
 	struct timeval tv;
 	struct timeval tv2;
@@ -610,13 +613,20 @@ static int setamixer(int devnum,char *param, int v1, int v2)
 }
 
 /*
-*/
-static void kickptt(struct chan_alsaradio_pvt *o)
+ * Write in pipe to inform serial thread that it needs to run PTT action
+ */
+static void						kickptt(struct chan_alsaradio_pvt *o)
 {
-	char c = 0;
-	if (!o) return;
-	if (!o->pttkick) return;
-	write(o->pttkick[1],&c,1);
+	char 						c;
+	ssize_t						ret;
+
+	c = 0;
+	if (o && o->pttkick)
+	{
+		if ((ret = write(o->pttkick[1], &c, 1)) <= 0)
+			ast_log(LOG_ERROR, "Write error (return %i)\n", (int)ret);
+	}
+	return;
 }
 
 /*
@@ -642,17 +652,19 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 
 /*
 */
-static void *serthread(void *arg)
+static void 					*serthread(void *arg)
 {
 	unsigned char keyed,ctcssed,txreq;
-	//char fname[200];
-	int res;
-	struct chan_alsaradio_pvt *o = (struct chan_alsaradio_pvt *) arg;
-	struct timeval to;
+
+	int 						res;
+	struct chan_alsaradio_pvt 	*o = (struct chan_alsaradio_pvt *) arg;
+	struct timeval 				to;
+	ast_fdset 					rfds;
+	ssize_t 					bytes_read;
+
 	//struct ast_config *cfg1;
 	//struct ast_variable *v;
-
-	ast_fdset rfds;
+	//char fname[200];
 
 	struct ast_flags zeroflag = {0};
 
@@ -714,6 +726,7 @@ static void *serthread(void *arg)
 			FD_SET(o->pttkick[0],&rfds);
 			/* Get the highter FD for select */
 			res = ast_select(o->serdev > o->pttkick[0] ? o->serdev + 1 : o->pttkick[0] + 1 , &rfds, NULL, NULL, &to);
+			ast_log(LOG_NOTICE, "select return <%i>\n", res);
 			if (res < 0)
 			{
 				ast_log(LOG_WARNING, "select failed: %s\n", strerror(errno));
@@ -721,15 +734,26 @@ static void *serthread(void *arg)
 				continue;
 			}
 			// Check if select as something interresting to read for us
-			if (FD_ISSET(o->pttkick[0],&rfds))
+			if (FD_ISSET(o->pttkick[0], &rfds))
 			{
 				char c;
-				ast_log(LOG_NOTICE, "Somtehing to read in serdev\n");
-				read(o->pttkick[0],&c,1);
+				ast_log(LOG_NOTICE, "Something to read in pttkick\n");
+				if ((bytes_read = read(o->pttkick[0], &c, 1)) <= 0)
+					ast_log(LOG_ERROR, "Error in read (returns %i)\n", (int) bytes_read);
 			}
 
-			ast_log(LOG_NOTICE, "select return <%i>\n", res);
+			/* Read serial input */
+			if (FD_ISSET(o->serdev, &rfds))
+			{
+				ast_log(LOG_NOTICE, "Something to read in serdev\n");
+				// probably need to proto sercommandbuf ith a mutex !!!!!
 
+				//ast_mutex_lock(&o->sercommandlock);
+				if ((bytes_read = read(o->serdev, &o->sercommandbuf, sizeof(o->sercommandbuf))) <= 0)
+					ast_log(LOG_ERROR, "Error in read (returns %i)\n", (int) bytes_read);
+				//ast_mutex_unlock(&o->sercommandlock);
+
+			}
 
 /*
 			keyed = sim_cor || serial_getcor(o);
@@ -749,7 +773,7 @@ static void *serthread(void *arg)
 			ast_mutex_lock(&o->txqlock);
 			txreq = o->txkeyed;			//!(AST_LIST_EMPTY(&o->txq));
 			ast_mutex_unlock(&o->txqlock);
-			txreq = txreq || o->txtestkey;	
+			txreq = txreq || o->txtestkey;	// ??
 			if (txreq && (!o->lasttx))
 			{
 				serial_pttkey(o, PTT_ON);
@@ -1756,6 +1780,7 @@ static struct chan_alsaradio_pvt *store_config(struct ast_config *cfg, char *ctg
 		}
 	}
 	ast_mutex_init(&o->txqlock);
+	ast_mutex_init(&o->sercommandlock);
 	strcpy(o->mohinterpret, "default");
 	/* fill other fields from configuration */
 	for (v = ast_variable_browse(cfg, ctg); v; v = v->next) {
