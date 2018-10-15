@@ -2235,32 +2235,29 @@ static int 		serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 
 /*
 */
-static int load_module(void)
+static int 						load_module(void)
 {
-	struct ast_config *cfg = NULL;
-	char *ctg = NULL;
-	struct ast_flags zeroflag = {0};
+	struct ast_config 			*cfg = NULL;
+	char 						*ctg = NULL;
+	struct ast_flags 			zeroflag = {0};
 
 	alsaradio_active = NULL;
-
-	if (!(alsaradio_tech.capabilities = ast_format_cap_alloc(AST_FORMAT_CAP_FLAG_DEFAULT))) {
+	if (!(alsaradio_tech.capabilities = ast_format_cap_alloc(AST_FORMAT_CAP_FLAG_DEFAULT)))
 		return AST_MODULE_LOAD_DECLINE;
-	}
 	ast_format_cap_append(alsaradio_tech.capabilities, ast_format_slin, 0);
 
 	/* Copy the default jb config over global_jbconf */
 	memcpy(&global_jbconf, &default_jbconf, sizeof(struct ast_jb_conf));
 
 	/* load config file */
-	if (!(cfg = ast_config_load(config,zeroflag))) {
+	if (!(cfg = ast_config_load(config, zeroflag)))
+	{
 		ast_log(LOG_WARNING, "Unable to load config %s\n", config);
 		return AST_MODULE_LOAD_DECLINE;
 	}
-
 	do {
 		store_config(cfg, ctg);
-	} while ( (ctg = ast_category_browse(cfg, ctg)) != NULL);
-
+	} while ((ctg = ast_category_browse(cfg, ctg)) != NULL);
 	ast_config_destroy(cfg);
 
 	if (ast_channel_register(&alsaradio_tech)) {
@@ -2268,6 +2265,7 @@ static int load_module(void)
 		return AST_MODULE_LOAD_FAILURE;
 	}
 
+	/* Register CLI command */
 	ast_cli_register_multiple(cli_alsaradio, sizeof(cli_alsaradio) / sizeof(struct ast_cli_entry));
 	ast_log(LOG_NOTICE, "Module loaded with %s\n", config);
 	return AST_MODULE_LOAD_SUCCESS;
