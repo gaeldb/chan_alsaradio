@@ -666,7 +666,7 @@ static void 					*serthread(void *arg)
 	//struct ast_variable *v;
 	//char fname[200];
 
-	struct ast_flags zeroflag = {0};
+	//struct ast_flags zeroflag = {0};
 
     while(!o->stopser)
     {
@@ -706,7 +706,7 @@ static void 					*serthread(void *arg)
 		else 
 			ast_log(LOG_WARNING,"File %s not found, device %s using default parameters.\n",fname,o->name);
 		*/
-		while(!o->stopser)
+		while (!o->stopser)
 		{
 			to.tv_sec = 0;
 			to.tv_usec = 50000; 
@@ -726,7 +726,7 @@ static void 					*serthread(void *arg)
 			FD_SET(o->pttkick[0],&rfds);
 			/* Get the highter FD for select */
 			res = ast_select(o->serdev > o->pttkick[0] ? o->serdev + 1 : o->pttkick[0] + 1 , &rfds, NULL, NULL, &to);
-			ast_log(LOG_NOTICE, "select return <%i>\n", res);
+			//ast_log(LOG_NOTICE, "select return <%i>\n", res);
 			if (res < 0)
 			{
 				ast_log(LOG_WARNING, "select failed: %s\n", strerror(errno));
@@ -746,12 +746,16 @@ static void 					*serthread(void *arg)
 			if (FD_ISSET(o->serdev, &rfds))
 			{
 				ast_log(LOG_NOTICE, "Something to read in serdev\n");
-				// probably need to proto sercommandbuf ith a mutex !!!!!
 
+				// probably need to protec sercommandbuf with a mutex !!!!!
 				//ast_mutex_lock(&o->sercommandlock);
 				if ((bytes_read = read(o->serdev, &o->sercommandbuf, sizeof(o->sercommandbuf))) <= 0)
 					ast_log(LOG_ERROR, "Error in read (returns %i)\n", (int) bytes_read);
 				//ast_mutex_unlock(&o->sercommandlock);
+
+				o->sercommandbuf[bytes_read - 2] = '\0'; /* -2 to cut control character ETX */
+
+				ast_log(LOG_NOTICE, "Read: <%s>\n", o->sercommandbuf + 1); /* +1 to cut control character STX */
 
 			}
 
@@ -2205,7 +2209,7 @@ static int 		serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 	}
 	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0) /* Read current PTT status */
     {
-        ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
+        ast_log(LOG_ERROR, "Unable to get serial I/O status for %s: %s\n", o->serdevname, strerror(errno));
         return (-1);
     }
 	if (o->invertptt) /* Revert switch for particular HW */
@@ -2223,10 +2227,10 @@ static int 		serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 		return (-1);
 	if ((ret = ioctl(o->serdev, TIOCMSET, &status)) < 0) /* Push new PTT status in TIOCM */
     {
-        ast_log(LOG_ERROR, "Unable to set modem lines for %s: %s\n", o->serdevname, strerror(errno));
+        ast_log(LOG_ERROR, "Unable to set serial I/O status for %s: %s\n", o->serdevname, strerror(errno));
         return (-1);
     }
-	return 0;
+	return (0);
 }
 
 /*
@@ -2303,9 +2307,6 @@ static int unload_module(void)
 	return 0;
 }
 
-
 AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Radio Interface Channel Driver");
 
 /*	end of file */
-
-
