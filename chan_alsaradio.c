@@ -2099,10 +2099,10 @@ static int 					serial_init(struct chan_alsaradio_pvt *o)
         return (1);
     }
 	/* set DTR active and RTS innactive */
-	status |= TIOCM_DTR;
-    status &= ~TIOCM_RTS;
-    //status |= TIOCM_RTS;
-    //status &= ~TIOCM_DTR;
+	//status |= TIOCM_DTR;
+    //status &= ~TIOCM_RTS;
+    status |= TIOCM_RTS;
+    status &= ~TIOCM_DTR;
 	if ((ret = ioctl(o->serdev, TIOCMSET, &status)) < 0)
     {
         ast_log(LOG_WARNING, "[%s] unable to set serial I/O status for %s: %s\n", o->name, o->serdevname, strerror(errno));
