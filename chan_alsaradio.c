@@ -27,23 +27,24 @@
         <defaultenabled>yes</defaultenabled> 	 	 
  ***/
 
-#include "asterisk.h"
+#include 								"asterisk.h"
 
 ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 
-#include <stdio.h>
-#include <ctype.h>
-#include <math.h>
-#include <string.h>
-#include <unistd.h>
-//#include <sys/io.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <alsa/asoundlib.h>
-#include <math.h>
+#include 								<stdio.h>
+#include 								<ctype.h>
+#include 								<math.h>
+#include 								<string.h>
+#include 								<termios.h>
+#include 								<unistd.h>
+//#include 								<sys/io.h>
+#include 								<sys/ioctl.h>
+#include 								<fcntl.h>
+#include 								<sys/time.h>
+#include 								<stdlib.h>
+#include 								<errno.h>
+#include 								<alsa/asoundlib.h>
+#include 								<math.h>
 
 #define DEBUG_CAPTURES	 				1
 
@@ -64,67 +65,68 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #define	READERR_THRESHOLD 				50
 
 #ifdef __linux
-#include <linux/soundcard.h>
+#include 								<linux/soundcard.h>
 #elif defined(__FreeBSD__)
-#include <sys/soundcard.h>
+#include 								<sys/soundcard.h>
 #else
-#include <soundcard.h>
+#include 								<soundcard.h>
 #endif
 
-#include "asterisk/lock.h"
-#include "asterisk/frame.h"
-#include "asterisk/logger.h"
-#include "asterisk/callerid.h"
-#include "asterisk/channel.h"
-#include "asterisk/module.h"
-#include "asterisk/options.h"
-#include "asterisk/pbx.h"
-#include "asterisk/config.h"
-#include "asterisk/cli.h"
-#include "asterisk/utils.h"
-#include "asterisk/causes.h"
-#include "asterisk/endian.h"
-#include "asterisk/stringfields.h"
-#include "asterisk/abstract_jb.h"
-#include "asterisk/musiconhold.h"
-#include "asterisk/dsp.h"
+#include 								"asterisk/lock.h"
+#include 								"asterisk/frame.h"
+#include 								"asterisk/logger.h"
+#include 								"asterisk/callerid.h"
+#include 								"asterisk/channel.h"
+#include 								"asterisk/module.h"
+#include 								"asterisk/options.h"
+#include 								"asterisk/pbx.h"
+#include 								"asterisk/config.h"
+#include 								"asterisk/cli.h"
+#include 								"asterisk/utils.h"
+#include 								"asterisk/causes.h"
+#include 								"asterisk/endian.h"
+#include 								"asterisk/stringfields.h"
+#include 								"asterisk/abstract_jb.h"
+#include 								"asterisk/musiconhold.h"
+#include 								"asterisk/dsp.h"
 
 /* Patch 13 */
-#include "asterisk/format_compatibility.h"
-#include "asterisk/format_cache.h"
-#include "asterisk/stasis_channels.h"
+#include 								"asterisk/format_compatibility.h"
+#include 								"asterisk/format_cache.h"
+#include 								"asterisk/stasis_channels.h"
 
 /* ALSA and serial stuff */
-#define ALSA_INDEV					"default"
-#define ALSA_OUTDEV					"default"
-#define DESIRED_RATE				8000
-#define SERIAL_DEV					"/dev/ttyS0"
-#define FRAME_SIZE 					160 /* Lets use 160 sample frames, just like GSM.  */
-#define PERIOD_FRAMES 				80	/* 80 Frames, at 2 bytes each */
+#define ALSA_INDEV						"default"
+#define ALSA_OUTDEV						"default"
+#define DESIRED_RATE					8000
+#define SERIAL_DEV						"/dev/ttyS0"
+#define SERIAL_BAUDRATE					B9600
+#define FRAME_SIZE 						160 /* Lets use 160 sample frames, just like GSM.  */
+#define PERIOD_FRAMES 					80	/* 80 Frames, at 2 bytes each */
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-static snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
+static snd_pcm_format_t 				format = SND_PCM_FORMAT_S16_LE;
 #else
-static snd_pcm_format_t format = SND_PCM_FORMAT_S16_BE;
+static snd_pcm_format_t 				format = SND_PCM_FORMAT_S16_BE;
 #endif
 
 AST_MUTEX_DEFINE_STATIC(alsalock);
 
-static int alsaradio_debug = 0;
+static int 								alsaradio_debug = 0;
 
 /* Number of buffers...  Each is FRAMESIZE/8 ms long.  For example
    with 160 sample frames, and a buffer size of 3, we have a 60ms buffer, 
    usually plenty. */
 
-#define MAX_BUFFER_SIZE 			100
+#define MAX_BUFFER_SIZE 				100
 
 int sim_cor = 0;		/* used to simulate COR active */
 
 /* ALSA and serial stuff end */
 
-#define O_CLOSE						0x444
+#define O_CLOSE							0x444
 
-#define	NTAPS 						31
+#define	NTAPS 							31
 
 /*! Global jitterbuffer configuration - by default, jb is disabled */
 static struct ast_jb_conf default_jbconf =
@@ -443,6 +445,8 @@ struct chan_alsaradio_pvt {
 	char 							serdevname[TEXT_SIZE];
 	int 							serdisable;
 	int 							serdev;
+	struct termios					sertermsettings;
+	speed_t							serbaudrate;
 	char 							sercommandbuf[COMMAND_BUFFER_SIZE];
 	ast_mutex_t  					sercommandlock;
 	char							invertptt;
@@ -475,6 +479,7 @@ static struct chan_alsaradio_pvt 	alsaradio_default = {
 	.outdev = -1,
 	/* serial stuff */
 	.serdevname = SERIAL_DEV,
+	.serbaudrate = SERIAL_BAUDRATE,
 	.serdisable = 0,
 	.serdev = -1
 };
@@ -2084,15 +2089,42 @@ static int 					serial_init(struct chan_alsaradio_pvt *o)
 		ast_log(LOG_NOTICE, "[%s] serial NOT opened: disabled by conf file\n", o->name);
 		return (1);
 	}
-	if ((o->serdev = open(o->serdevname, O_RDWR)) < 0)
+	if ((o->serdev = open(o->serdevname, O_RDWR, O_NOCTTY)) < 0)
 	{
 		ast_log(LOG_ERROR, "[%s] unable to open serial device %s: %s\n", o->name, o->serdevname, strerror(errno));
 		return (-1);
 	}
+
+	/* Construct termios attr table */
+	if (tcgetattr(o->serdev, &o->sertermsettings) < 0)
+	{
+		ast_log(LOG_ERROR, "[%s] Error getting I/O attr for device %s: %s\n", o->name, o->serdevname, strerror(errno));
+		return (-1);
+	}
+
+	/* Define termios attr table */
+	cfsetispeed(&o->sertermsettings, o->serbaudrate);	// Set I baudrate speed
+	cfsetospeed(&o->sertermsettings, o->serbaudrate);	// Set O baudrate speed
+	o->sertermsettings.c_cflag &= ~PARENB;				// Clear parity bit
+	o->sertermsettings.c_cflag &= ~CSTOPB; 				// Stop bits = 1
+	o->sertermsettings.c_cflag &= ~CSIZE; 				// Clears the Mask
+	o->sertermsettings.c_cflag |=  CS8;   				// Set the data bits = 8
+	o->sertermsettings.c_cflag |= CREAD | CLOCAL;		// Allow port reading
+	o->sertermsettings.c_iflag &= ~(IXON | IXOFF | IXANY); // Disable flow control
+
+	/* Set termios attr */
+	if (tcsetattr(o->serdev, TCSANOW, &o->sertermsettings) < 0)
+	{
+		ast_log(LOG_ERROR, "[%s] Error setting I/O attr for device %s: %s\n", o->name, o->serdevname, strerror(errno));
+		return (-1);
+	}
+
 	o->stopser = 0;
 	time(&o->lastsertime);
 	/* Run serial thread for this device */
 	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
+
+	// Why here ????? in serthread ?
 	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
     {
         ast_log(LOG_WARNING, "[%s] unable to get serial I/O status for %s: %s\n", o->name, o->serdevname, strerror(errno));
