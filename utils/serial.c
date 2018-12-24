@@ -1,3 +1,5 @@
+/* Your bible is now: https://www.cmrr.umn.edu/~strupp/serial.html */
+
 #include			<stdlib.h>
 #include 			<unistd.h>
 #include 			<stdio.h>
@@ -5,6 +7,9 @@
 #include 			<signal.h>
 #include 			<sys/ioctl.h>
 #include 			<sys/fcntl.h>
+#include			<sys/select.h>
+#include			<sys/types.h>
+#include			<sys/time.h>
 #include 			<stropts.h>
 
 int					fd;
@@ -19,8 +24,15 @@ void				handler(int signum)
 
 int 				main(void)
 {
-	char			c;
+	char			buf[256];
+	char 			c;
+	int 			i;
+	int 			c_read;
 	int 			status;
+	int            	n;
+	int           	fd;
+	fd_set        	rdfs;
+	struct timeval 	timeout;
 
 	/* Catch SIGINT */
   	if (signal(SIGINT, handler) == SIG_IGN)
@@ -80,18 +92,47 @@ int 				main(void)
 		exit(-1);
     }
 
-	/* Dirty reading loop */
+	/* Reading loop */
 	while (1)
 	{
-		read(fd, &c, 1);
-		//printf("%03u %02x %c\n",c&0xff,c&0xff,c);
-		if (c == 0x03) // 0x03 = ETX
-			printf("\n");
-		else if (c == '\n')
-			printf("\\n");
-		else if (c == '\r')
-			printf("\\r");
+		/* Initialize the input set */
+		FD_ZERO(&rdfs);
+		FD_SET(fd, &rdfs);
+		
+		/* Initialize the timeout structure */
+		timeout.tv_sec = 3;
+		timeout.tv_usec = 0;
+
+		/* Do the select */
+		n = select(fd + 1, &rdfs, NULL, NULL, &timeout);
+		if (n == -1)
+		  perror("select failed");
+		else if (n == 0)
+		  printf("Select timeout\n");
 		else
-			printf("%c", c);
+		{
+			/* We have input */
+		  	if (FD_ISSET(fd, &rdfs))
+		  	{
+		  		i = 0;
+		  		while (42)
+		  		{
+					if (read(fd, &c, 1) < 0)
+						perror("read failed");
+					if (c == 0x03) // 0x03 = ETX
+					{
+						buf[i] = '\0';
+						break;
+					}
+					if (c >= 0x06) // not a control char
+					{
+						buf[i] = c;
+						i++;
+					}
+		  		}
+		  		printf("%s\n", buf);
+
+			}
+		}
 	}
 }
