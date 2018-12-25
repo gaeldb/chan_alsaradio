@@ -12,9 +12,11 @@
 #include			<sys/time.h>
 #include 			<stropts.h>
 
+/* Global variables */
 int					fd;
 struct termios		termios_p;
 
+/* Signals catcher */
 void				handler(int signum)
 {
 	printf("Exit now (%i).\n", signum);
@@ -29,9 +31,9 @@ int 				main(void)
 	int 			i;
 	int 			c_read;
 	int 			status;
-	int            	n;
-	int           	fd;
-	fd_set        	rdfs;
+	int				n;
+	int 			fd;
+	fd_set 			rdfs;
 	struct timeval 	timeout;
 
 	/* Catch SIGINT */
@@ -39,14 +41,14 @@ int 				main(void)
   		signal(SIGINT, SIG_IGN);
 
 	/* Open port */
-	if ((fd = open("/dev/ttyUSB0", O_RDWR | O_NOCTTY)) == -1 )
+	if ((fd = open("/dev/ttyUSB1", O_RDWR | O_NOCTTY)) == -1 )
 	{
 		perror("open");
 		exit(-1);
 	}
 	
 	/* Read current parameters */
-	tcgetattr(fd,&termios_p);
+	tcgetattr(fd, &termios_p);
 
 	/* Set baudrate */
 	cfsetispeed(&termios_p, B9600);
@@ -72,7 +74,7 @@ int 				main(void)
 	termios_p.c_cc[VTIME] = 0;
 
 	/* Set new attributes*/
-	tcsetattr(fd,TCSANOW,&termios_p);
+	tcsetattr(fd, TCSANOW, &termios_p);
 	
 	/* If needed, set DTR inactive. For exemple if PTT is controlled
 	by RTS or DTR and PTT is always pushed during exec */
@@ -93,7 +95,7 @@ int 				main(void)
     }
 
 	/* Reading loop */
-	while (1)
+	while (42)
 	{
 		/* Initialize the input set */
 		FD_ZERO(&rdfs);
@@ -119,12 +121,13 @@ int 				main(void)
 		  		{
 					if (read(fd, &c, 1) < 0)
 						perror("read failed");
+					//printf("Read: %c\n", c);
 					if (c == 0x03) // 0x03 = ETX
 					{
 						buf[i] = '\0';
 						break;
 					}
-					if (c >= 0x06) // not a control char
+					else if (c >= 0x06)
 					{
 						buf[i] = c;
 						i++;
