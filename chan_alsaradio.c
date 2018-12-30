@@ -441,22 +441,25 @@ struct chan_alsaradio_pvt {
 	struct timeval tv2;
 
 	/* Serial stuff */
-	pthread_t 						serthread;
-	char 							serdevname[TEXT_SIZE];
-	int 							serdisable;
-	int 							serdev;
-	struct termios					sertermsettings;
-	speed_t							serbaudrate;
-	char 							sercommandbuf[COMMAND_BUFFER_SIZE];
-	ast_mutex_t  					sercommandlock;
-	char							invertptt;
-	int 							pttkick[2];
-	int 							stopser;
-	int 							stopwrite;
+	pthread_t 				serthread;
+	char 					serdevname[TEXT_SIZE];
+	int 					serdisable;
+	int 					serdev;
+	struct termios			sertermsettings;
+	speed_t					serbaudrate;
+
+	char 					sercommandbuf[COMMAND_BUFFER_SIZE];
+	ast_mutex_t  			sercommandlock;
+
+	char					invertptt;
+	int 					pttkick[2];
+	int 					stopser;
+	int 					stopwrite;
 
 };
 
-static struct chan_alsaradio_pvt 	alsaradio_default = {
+static struct chan_alsaradio_pvt 
+							alsaradio_default = {
 	.sounddev = -1,
 	.duplex = 1,
 	.autoanswer = 1,
@@ -484,7 +487,8 @@ static struct chan_alsaradio_pvt 	alsaradio_default = {
 	.serdev = -1
 };
 
-static char *alsaradio_active;	 /* the active device */
+/* the active device */
+static char 				*alsaradio_active;
 
 /*	DECLARE FUNCTION PROTOTYPES	*/
 static void 				mixer_write(struct chan_alsaradio_pvt *o);
@@ -512,7 +516,8 @@ static int 					serial_getcor(struct chan_alsaradio_pvt *o);
 static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
 static int 					serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
 
-static struct ast_channel_tech alsaradio_tech = {
+static struct ast_channel_tech
+							alsaradio_tech = {
 	.type = "alsaradio",
 	.description = "alsaradio channel driver",
 	.requester = alsaradio_request,
@@ -666,6 +671,9 @@ static void 					*serthread(void *arg)
 	ast_fdset 					rfds;
 	ssize_t 					bytes_read;
 
+	char 						c;
+	int 						i;
+
 	//struct ast_config *cfg1;
 	//struct ast_variable *v;
 	//char fname[200];
@@ -713,8 +721,8 @@ static void 					*serthread(void *arg)
 		*/
 		while (!o->stopser)
 		{
-			to.tv_sec = 0;
-			to.tv_usec = 50000; 
+			to.tv_sec = 3;
+			to.tv_usec = 0; 
 
 			/* 	Prepare ast_select reading on pipe o->pttkick[0]
 				Good to know ast_select emulates linux behaviour in terms of timeout handling */
@@ -729,6 +737,7 @@ static void 					*serthread(void *arg)
 			FD_ZERO(&rfds);
 			FD_SET(o->serdev, &rfds);
 			FD_SET(o->pttkick[0], &rfds);
+
 			/* Get the highter FD for select */
 			res = ast_select(o->serdev > o->pttkick[0] ? o->serdev + 1 : o->pttkick[0] + 1 , &rfds, NULL, NULL, &to);
 			//ast_log(LOG_NOTICE, "select return <%i>\n", res);
@@ -738,29 +747,42 @@ static void 					*serthread(void *arg)
 				usleep(10000);
 				continue;
 			}
-			/* Check if select as something interresting to read for us and read serial input */
-			if (FD_ISSET(o->pttkick[0], &rfds))
+			else /* We have something to read */
 			{
-				char c;
-				ast_log(LOG_NOTICE, "Something to read in pttkick\n");
-				if ((bytes_read = read(o->pttkick[0], &c, 1)) <= 0)
-					ast_log(LOG_ERROR, "Error in read (returns %i)\n", (int) bytes_read);
+				if (FD_ISSET(o->pttkick[0], &rfds))
+				{
+					if ((bytes_read = read(o->pttkick[0], &c, 1)) <= 0)
+						ast_log(LOG_ERROR, "Error in read (returns %i)\n", (int) bytes_read);
+				}
+				if (FD_ISSET(o->serdev, &rfds))
+				{
+					// probably need to protec sercommandbuf with a mutex !!!!!
+					//ast_mutex_lock(&o->sercommandlock) and ast_mutex_unlock(&o->sercommandlock);
+
+					i = 0;
+					while (42)
+					{
+						if (read(o->serdev, &c, 1) < 0)
+							ast_log(LOG_ERROR, "Error in read.\n");
+						if (c == 0x03) // 0x03 = ETX
+						{
+							o->sercommandbuf[i] = '\0';
+							break;
+						}
+						else if (c >= 0x06)
+						{
+							o->sercommandbuf[i] = c;
+							i++;
+						}
+					}
+					if (o->debuglevel)
+						ast_verbose("[%s] %s\n", o->name, o->sercommandbuf);
+				}
 			}
-			if (FD_ISSET(o->serdev, &rfds))
-			{
-				ast_log(LOG_NOTICE, "Something to read in serdev\n");
 
-				// probably need to protec sercommandbuf with a mutex !!!!!
-				//ast_mutex_lock(&o->sercommandlock);
-				if ((bytes_read = read(o->serdev, &o->sercommandbuf, sizeof(o->sercommandbuf))) <= 0)
-					ast_log(LOG_ERROR, "Error in read (returns %i)\n", (int) bytes_read);
-				//ast_mutex_unlock(&o->sercommandlock);
-
-				o->sercommandbuf[bytes_read - 2] = '\0'; /* -2 to cut control character ETX */
-
-				ast_log(LOG_NOTICE, "Read: <%s>\n", o->sercommandbuf + 1); /* +1 to cut control character STX */
-
-			}
+			
+			
+			
 
 /*
 			keyed = sim_cor || serial_getcor(o);
@@ -777,6 +799,8 @@ static void 					*serthread(void *arg)
 				o->rxserctcss = ctcssed;
 			}
 			*/
+
+			// c'est quoi tout ca ??
 			ast_mutex_lock(&o->txqlock);
 			txreq = o->txkeyed;			//!(AST_LIST_EMPTY(&o->txq));
 			ast_mutex_unlock(&o->txqlock);
@@ -2079,67 +2103,83 @@ static void alsa_card_uninit(struct chan_alsaradio_pvt *o)
 	o->outdev = -1;
 }
 
-static int 					serial_init(struct chan_alsaradio_pvt *o)
+static int 				serial_init(struct chan_alsaradio_pvt *o)
 {
-	int 					status;
-	int 					ret;
+	int 				status;
+	int 				ret;
 
 	if (o->serdisable)
 	{
-		ast_log(LOG_NOTICE, "[%s] serial NOT opened: disabled by conf file\n", o->name);
+		ast_log(LOG_NOTICE, "[%s] serial NOT opened: disabled by conf file\n",
+				o->name);
 		return (1);
 	}
-	if ((o->serdev = open(o->serdevname, O_RDWR, O_NOCTTY)) < 0)
+	if ((o->serdev = open(o->serdevname, O_RDWR | O_NOCTTY)) < 0)
 	{
-		ast_log(LOG_ERROR, "[%s] unable to open serial device %s: %s\n", o->name, o->serdevname, strerror(errno));
+		ast_log(LOG_ERROR, "[%s] unable to open serial device %s: %s\n",
+				o->name, o->serdevname, strerror(errno));
 		return (-1);
 	}
 
 	/* Construct termios attr table */
 	if (tcgetattr(o->serdev, &o->sertermsettings) < 0)
 	{
-		ast_log(LOG_ERROR, "[%s] Error getting I/O attr for device %s: %s\n", o->name, o->serdevname, strerror(errno));
+		ast_log(LOG_ERROR, "[%s] Error getting I/O attr for device %s: %s\n",
+				o->name, o->serdevname, strerror(errno));
 		return (-1);
 	}
 
 	/* Define termios attr table */
-	cfsetispeed(&o->sertermsettings, o->serbaudrate);	// Set I baudrate speed
-	cfsetospeed(&o->sertermsettings, o->serbaudrate);	// Set O baudrate speed
-	o->sertermsettings.c_cflag &= ~PARENB;				// Clear parity bit
-	o->sertermsettings.c_cflag &= ~CSTOPB; 				// Stop bits = 1
-	o->sertermsettings.c_cflag &= ~CSIZE; 				// Clears the Mask
-	o->sertermsettings.c_cflag |=  CS8;   				// Set the data bits = 8
-	o->sertermsettings.c_cflag |= CREAD | CLOCAL;		// Allow port reading
-	o->sertermsettings.c_iflag &= ~(IXON | IXOFF | IXANY); // Disable flow control
+	cfsetispeed(&o->sertermsettings, o->serbaudrate); // Set I baudrate speed
+	cfsetospeed(&o->sertermsettings, o->serbaudrate); // Set O baudrate speed
+	
+	/* Compatible for USB<->ICOM serial PCCMDV2 */
+	o->sertermsettings.c_iflag &= ~(IXON | IXOFF | IXANY);
+	o->sertermsettings.c_iflag |= IGNPAR;
+	o->sertermsettings.c_oflag = 0;
+	o->sertermsettings.c_cflag &= ~(PARENB | CSTOPB | CSIZE | CRTSCTS);
+	o->sertermsettings.c_cflag |= CREAD;
+	o->sertermsettings.c_cflag |= CS8;
+	o->sertermsettings.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+
+	/* Read caraters immediatly */
+	o->sertermsettings.c_cc[VMIN] = 1;
+	o->sertermsettings.c_cc[VTIME] = 0;
 
 	/* Set termios attr */
 	if (tcsetattr(o->serdev, TCSANOW, &o->sertermsettings) < 0)
 	{
-		ast_log(LOG_ERROR, "[%s] Error setting I/O attr for device %s: %s\n", o->name, o->serdevname, strerror(errno));
+		ast_log(LOG_ERROR, "[%s] Error setting I/O attr for device %s: %s\n",
+				o->name, o->serdevname, strerror(errno));
 		return (-1);
 	}
 
-	o->stopser = 0;
-	time(&o->lastsertime);
-	/* Run serial thread for this device */
-	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
-
-	// Why here ????? in serthread ?
+	/* set DTR active and RTS innactive */
 	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
     {
-        ast_log(LOG_WARNING, "[%s] unable to get serial I/O status for %s: %s\n", o->name, o->serdevname, strerror(errno));
+        ast_log(LOG_WARNING,
+        		"[%s] unable to get serial I/O status for %s: %s\n", o->name,
+        		o->serdevname, strerror(errno));
         return (1);
     }
-	/* set DTR active and RTS innactive */
+	// if inverted:
 	//status |= TIOCM_DTR;
     //status &= ~TIOCM_RTS;
     status |= TIOCM_RTS;
     status &= ~TIOCM_DTR;
 	if ((ret = ioctl(o->serdev, TIOCMSET, &status)) < 0)
     {
-        ast_log(LOG_WARNING, "[%s] unable to set serial I/O status for %s: %s\n", o->name, o->serdevname, strerror(errno));
+        ast_log(LOG_WARNING,
+        		"[%s] unable to set serial I/O status for %s: %s\n", o->name,
+        		o->serdevname, strerror(errno));
 		return (1);
     }
+
+    o->stopser = 0;
+	time(&o->lastsertime);
+
+	/* Run serial thread for this device */
+	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
 	return (0);
 }
 
@@ -2156,7 +2196,8 @@ static void 		serial_uninit(struct chan_alsaradio_pvt *o)
 	pthread_join(o->serthread, NULL);
 	close(o->serdev);
 	o->serdev = -1;
-	ast_log(LOG_NOTICE, "[%s] serial device %s closed\n", o->name, o->serdevname);
+	ast_log(LOG_NOTICE, "[%s] serial device %s closed\n", o->name,
+			o->serdevname);
 	return;
 }
 
