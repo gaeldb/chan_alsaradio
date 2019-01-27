@@ -710,7 +710,8 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 		ast_log(LOG_WARNING, "could not find <%s>\n", dev ? dev : "--no-device--");
 		return (NULL);
 	}
-	ast_log(LOG_NOTICE, "Found device %s at <%p>\n", dev, o);
+	if (o->debuglevel)
+		ast_verbose("Found device %s at <%p>\n", dev, o);
 	return o;
 }
 
@@ -2391,8 +2392,9 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 	/* Run serial thread for this device */
 	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
 
-
+	/* Prepare radio to oprationnal condition on get basic info */
 	send_info_request(o);
+	send_command(o, "*SET,UI,TEXT,Airlink");
 
 	return (0);
 }
