@@ -456,6 +456,12 @@ struct chan_alsaradio_pvt {
 	int 					stopser;
 	int 					stopwrite;
 
+	/* Command INFO stuff */
+	char 					inforev[TEXT_SIZE];
+	char 					infodrev[TEXT_SIZE];
+	char 					infofrev[TEXT_SIZE];
+	char 					infocomment[TEXT_SIZE];
+	char 					infoesn[TEXT_SIZE];
 };
 
 static struct chan_alsaradio_pvt 
@@ -515,6 +521,7 @@ static void 				serial_uninit(struct chan_alsaradio_pvt *o);
 static int 					serial_getcor(struct chan_alsaradio_pvt *o);
 static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
 static int 					serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
+static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
 
 static struct ast_channel_tech
 							alsaradio_tech = {
@@ -638,6 +645,23 @@ static void						kickptt(struct chan_alsaradio_pvt *o)
 	return;
 }
 
+
+/*
+ * Request INFO values to the radio
+ */
+static int						send_info_request(struct chan_alsaradio_pvt *o)
+{
+	if (o)
+	{
+		send_command(o, "*GET,INFO,REV");
+		send_command(o, "*GET,INFO,DREV");
+		send_command(o, "*GET,INFO,FREV");
+		send_command(o, "*GET,INFO,COMMENT");
+		send_command(o, "*GET,INFO,ESN");
+	}
+	return RESULT_SUCCESS;
+}
+
 /*
  * Write in command pipe
  */
@@ -655,7 +679,7 @@ static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
 			ast_verbose("[%s] send: %s\n", o->name, ast_str_buffer(formated_command));
 		if ((ret = write(o->serdev, ast_str_buffer(formated_command), ast_str_strlen(formated_command))) <= 0)
 		{
-	 		ast_log(LOG_ERROR, "Write error (return %i)\n", (int)ret);
+	 		ast_log(LOG_ERROR, "Write error (return %i): %s\n", (int)ret, strerror(errno));
 	 		ast_free(formated_command);
 	 		return -42;
 		}
@@ -1544,6 +1568,9 @@ static int 						console_command(int fd, int argc, const char *const *argv)
 	return RESULT_SUCCESS;
 }
 
+/*
+ * Send a RESET command to the radio via send_command()
+ */
 static int 						console_reset(int fd, int argc, const char *const *argv)
 {
 	struct chan_alsaradio_pvt 	*o;
@@ -1553,6 +1580,20 @@ static int 						console_reset(int fd, int argc, const char *const *argv)
 	o = find_desc(alsaradio_active);
 	if (send_command(o, "*SET,UI,RESET") != RESULT_SUCCESS)
 		ast_log(LOG_ERROR, "Error when sending command\n");
+	return RESULT_SUCCESS;
+}
+
+/*
+ * Send all INFO commands to the radio via send_command()
+ */
+static int 						radio_param(int fd, int argc, const char *const *argv)
+{
+	struct chan_alsaradio_pvt 	*o;
+
+	if (argc != 2)
+		return RESULT_SHOWUSAGE;
+	o = find_desc(alsaradio_active);
+	(void)send_info_request(o);
 	return RESULT_SUCCESS;
 }
 
@@ -1713,6 +1754,10 @@ static char command_usage[] =
 static char reset_usage[] =
 	"Usage: aradio reset\n"
 	"       Perform a reset (power switch) to active radio.\n";
+
+static char param_usage[] =
+	"Usage: aradio param\n"
+	"       Manage parameters of active radio.\n";
 
 // static char rkey_usage[] =
 // 	"Usage: aradio rkey\n"
@@ -1968,6 +2013,20 @@ static char *handle_console_reset(struct ast_cli_entry *e,
 	return res2cli(console_reset(a->fd,a->argc,a->argv));
 }
 
+static char *handle_aradio_param(struct ast_cli_entry *e,
+	int cmd, struct ast_cli_args *a)
+{
+        switch (cmd) {
+        case CLI_INIT:
+                e->command = "aradio param";
+                e->usage = param_usage;
+                return NULL;
+        case CLI_GENERATE:
+                return NULL;
+	}
+	return res2cli(radio_param(a->fd,a->argc,a->argv));
+}
+
 // We do not use it... (COR ?)
 // static char *handle_console_runkey(struct ast_cli_entry *e,
 // 	int cmd, struct ast_cli_args *a)
@@ -2058,9 +2117,10 @@ static struct ast_cli_entry cli_alsaradio[] = {
 	AST_CLI_DEFINE(handle_console_unkey,"Radio PTT unkey"),
 	AST_CLI_DEFINE(handle_console_command,"Radio send command"),
 	AST_CLI_DEFINE(handle_console_reset,"Radio reset"),
+	AST_CLI_DEFINE(handle_aradio_param,"Radio parameters"),
 	// AST_CLI_DEFINE(handle_console_rkey,"Radio COR active"),
 	// AST_CLI_DEFINE(handle_console_runkey,"Radio COR inactive"),
-	AST_CLI_DEFINE(handle_aradio_tune,"aradio Tune"),
+	//AST_CLI_DEFINE(handle_aradio_tune,"aradio Tune"),
 	AST_CLI_DEFINE(handle_aradio_debug,"aradio Debug On"),
 	AST_CLI_DEFINE(handle_aradio_debug_off,"aradio Debug Off"),
 	AST_CLI_DEFINE(handle_aradio_active,"Change commanded device")
