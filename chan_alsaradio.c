@@ -641,7 +641,7 @@ static void						kickptt(struct chan_alsaradio_pvt *o)
 /*
  * Write in command pipe
  */
-static int						send_command(struct chan_alsaradio_pvt *o, char *cmd)
+static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
 {
 	// need to wait FD o->serdev to be free with a mutex... ?!!!
 	struct ast_str 				*formated_command;
@@ -1544,6 +1544,18 @@ static int 						console_command(int fd, int argc, const char *const *argv)
 	return RESULT_SUCCESS;
 }
 
+static int 						console_reset(int fd, int argc, const char *const *argv)
+{
+	struct chan_alsaradio_pvt 	*o;
+
+	if (argc != 2)
+		return RESULT_SHOWUSAGE;
+	o = find_desc(alsaradio_active);
+	if (send_command(o, "*SET,UI,RESET") != RESULT_SUCCESS)
+		ast_log(LOG_ERROR, "Error when sending command\n");
+	return RESULT_SUCCESS;
+}
+
 // static int 						console_rkey(int fd, int argc, const char *const *argv)
 // {
 // 	sim_cor = 1;
@@ -1697,6 +1709,10 @@ static char unkey_usage[] =
 static char command_usage[] =
 	"Usage: aradio command <command>\n"
 	"       Send a control command to active radio.\n";
+
+static char reset_usage[] =
+	"Usage: aradio reset\n"
+	"       Perform a reset (power switch) to active radio.\n";
 
 // static char rkey_usage[] =
 // 	"Usage: aradio rkey\n"
@@ -1938,6 +1954,20 @@ static char *handle_console_command(struct ast_cli_entry *e,
 	return res2cli(console_command(a->fd,a->argc,a->argv));
 }
 
+static char *handle_console_reset(struct ast_cli_entry *e,
+	int cmd, struct ast_cli_args *a)
+{
+        switch (cmd) {
+        case CLI_INIT:
+                e->command = "aradio reset";
+                e->usage = reset_usage;
+                return NULL;
+        case CLI_GENERATE:
+                return NULL;
+	}
+	return res2cli(console_reset(a->fd,a->argc,a->argv));
+}
+
 // We do not use it... (COR ?)
 // static char *handle_console_runkey(struct ast_cli_entry *e,
 // 	int cmd, struct ast_cli_args *a)
@@ -2027,6 +2057,7 @@ static struct ast_cli_entry cli_alsaradio[] = {
 	AST_CLI_DEFINE(handle_console_key,"Radio PTT key"),
 	AST_CLI_DEFINE(handle_console_unkey,"Radio PTT unkey"),
 	AST_CLI_DEFINE(handle_console_command,"Radio send command"),
+	AST_CLI_DEFINE(handle_console_reset,"Radio reset"),
 	// AST_CLI_DEFINE(handle_console_rkey,"Radio COR active"),
 	// AST_CLI_DEFINE(handle_console_runkey,"Radio COR inactive"),
 	AST_CLI_DEFINE(handle_aradio_tune,"aradio Tune"),
