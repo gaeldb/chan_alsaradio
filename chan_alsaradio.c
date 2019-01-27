@@ -639,6 +639,32 @@ static void						kickptt(struct chan_alsaradio_pvt *o)
 }
 
 /*
+ * Write in command pipe
+ */
+static int						send_command(struct chan_alsaradio_pvt *o, char *cmd)
+{
+	// need to wait FD o->serdev to be free with a mutex... ?!!!
+	struct ast_str 				*formated_command;
+	int 						ret;
+
+	if (o && cmd)
+	{
+		formated_command = ast_str_create(strlen(cmd) + 3);
+		ast_str_set(&formated_command, 0, "%c%s%c", 0x02, cmd, 0x03);
+		if (o->debuglevel)
+			ast_verbose("[%s] send: %s\n", o->name, ast_str_buffer(formated_command));
+		if ((ret = write(o->serdev, ast_str_buffer(formated_command), ast_str_strlen(formated_command))) <= 0)
+		{
+	 		ast_log(LOG_ERROR, "Write error (return %i)\n", (int)ret);
+	 		ast_free(formated_command);
+	 		return -42;
+		}
+		ast_free(formated_command);
+	}
+	return RESULT_SUCCESS;
+}
+
+/*
  * Parse the chained list alsaradio_default and returns a pointer
  * to the descriptor with the given dev name.
  */
@@ -769,7 +795,7 @@ static void 					*serthread(void *arg)
 							o->sercommandbuf[i] = '\0';
 							break;
 						}
-						else if (c >= 0x06)
+						else if (c >= 0x06) // This is a printable character
 						{
 							o->sercommandbuf[i] = c;
 							i++;
@@ -1506,18 +1532,29 @@ static int 						console_unkey(int fd, int argc, const char *const *argv)
 	return RESULT_SUCCESS;
 }
 
-
-static int 						console_rkey(int fd, int argc, const char *const *argv)
+static int 						console_command(int fd, int argc, const char *const *argv)
 {
-	sim_cor = 1;
-	return 0;
+	struct chan_alsaradio_pvt 	*o;
+
+	if (argc != 3)
+		return RESULT_SHOWUSAGE;
+	o = find_desc(alsaradio_active);
+	if (send_command(o, argv[2]) != RESULT_SUCCESS)
+		ast_log(LOG_ERROR, "Error when sending command\n");
+	return RESULT_SUCCESS;
 }
 
-static int 						console_runkey(int fd, int argc, const char *const *argv)
-{
-	sim_cor = 0;
-	return 0;
-}
+// static int 						console_rkey(int fd, int argc, const char *const *argv)
+// {
+// 	sim_cor = 1;
+// 	return 0;
+// }
+
+// static int 						console_runkey(int fd, int argc, const char *const *argv)
+// {
+// 	sim_cor = 0;
+// 	return 0;
+// }
 
 static int 						radio_tune(int fd, int argc, const char *const *argv)
 {
@@ -1657,13 +1694,17 @@ static char unkey_usage[] =
 	"Usage: aradio unkey\n"
 	"       Simulates radio PTT unkeyed.\n";
 
-static char rkey_usage[] =
-	"Usage: aradio rkey\n"
-	"       Simulates radio COR active.\n";
+static char command_usage[] =
+	"Usage: aradio command <command>\n"
+	"       Send a control command to active radio.\n";
 
-static char runkey_usage[] =
-	"Usage: aradio runkey\n"
-	"       Simulates radio COR inactive.\n";
+// static char rkey_usage[] =
+// 	"Usage: aradio rkey\n"
+// 	"       Simulates radio COR active.\n";
+
+// static char runkey_usage[] =
+// 	"Usage: aradio runkey\n"
+// 	"       Simulates radio COR inactive.\n";
 
 static char active_usage[] =
         "Usage: aradio active [device-name]\n"
@@ -1883,33 +1924,48 @@ static char *handle_console_unkey(struct ast_cli_entry *e,
 	return res2cli(console_unkey(a->fd,a->argc,a->argv));
 }
 
-static char *handle_console_runkey(struct ast_cli_entry *e,
+static char *handle_console_command(struct ast_cli_entry *e,
 	int cmd, struct ast_cli_args *a)
 {
         switch (cmd) {
         case CLI_INIT:
-                e->command = "aradio runkey";
-                e->usage = runkey_usage;
+                e->command = "aradio command";
+                e->usage = command_usage;
                 return NULL;
         case CLI_GENERATE:
                 return NULL;
 	}
-	return res2cli(console_runkey(a->fd,a->argc,a->argv));
+	return res2cli(console_command(a->fd,a->argc,a->argv));
 }
 
-static char *handle_console_rkey(struct ast_cli_entry *e,
-	int cmd, struct ast_cli_args *a)
-{
-        switch (cmd) {
-        case CLI_INIT:
-                e->command = "aradio rkey";
-                e->usage = rkey_usage;
-                return NULL;
-        case CLI_GENERATE:
-                return NULL;
-	}
-	return res2cli(console_rkey(a->fd,a->argc,a->argv));
-}
+// We do not use it... (COR ?)
+// static char *handle_console_runkey(struct ast_cli_entry *e,
+// 	int cmd, struct ast_cli_args *a)
+// {
+//         switch (cmd) {
+//         case CLI_INIT:
+//                 e->command = "aradio runkey";
+//                 e->usage = runkey_usage;
+//                 return NULL;
+//         case CLI_GENERATE:
+//                 return NULL;
+// 	}
+// 	return res2cli(console_runkey(a->fd,a->argc,a->argv));
+// }
+
+// static char *handle_console_rkey(struct ast_cli_entry *e,
+// 	int cmd, struct ast_cli_args *a)
+// {
+//         switch (cmd) {
+//         case CLI_INIT:
+//                 e->command = "aradio rkey";
+//                 e->usage = rkey_usage;
+//                 return NULL;
+//         case CLI_GENERATE:
+//                 return NULL;
+// 	}
+// 	return res2cli(console_rkey(a->fd,a->argc,a->argv));
+// }
 
 static char *handle_aradio_tune(struct ast_cli_entry *e,
 	int cmd, struct ast_cli_args *a)
@@ -1969,9 +2025,10 @@ static char *handle_aradio_active(struct ast_cli_entry *e,
 
 static struct ast_cli_entry cli_alsaradio[] = {
 	AST_CLI_DEFINE(handle_console_key,"Radio PTT key"),
-	AST_CLI_DEFINE(handle_console_unkey,"Radio PTT  unkey"),
-	AST_CLI_DEFINE(handle_console_rkey,"Radio COR active"),
-	AST_CLI_DEFINE(handle_console_runkey,"Radio COR inactive"),
+	AST_CLI_DEFINE(handle_console_unkey,"Radio PTT unkey"),
+	AST_CLI_DEFINE(handle_console_command,"Radio send command"),
+	// AST_CLI_DEFINE(handle_console_rkey,"Radio COR active"),
+	// AST_CLI_DEFINE(handle_console_runkey,"Radio COR inactive"),
 	AST_CLI_DEFINE(handle_aradio_tune,"aradio Tune"),
 	AST_CLI_DEFINE(handle_aradio_debug,"aradio Debug On"),
 	AST_CLI_DEFINE(handle_aradio_debug_off,"aradio Debug Off"),
