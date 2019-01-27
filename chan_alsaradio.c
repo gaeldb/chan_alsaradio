@@ -462,6 +462,9 @@ struct chan_alsaradio_pvt {
 	char 					infofrev[TEXT_SIZE];
 	char 					infocomment[TEXT_SIZE];
 	char 					infoesn[TEXT_SIZE];
+	char                    dpmridtype[TEXT_SIZE];
+	char                    dpmridsrc[TEXT_SIZE];
+	char                    dpmriddest[TEXT_SIZE];
 };
 
 static struct chan_alsaradio_pvt 
@@ -522,6 +525,7 @@ static int 					serial_getcor(struct chan_alsaradio_pvt *o);
 static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
 static int 					serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
 static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
+static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 
 static struct ast_channel_tech
 							alsaradio_tech = {
@@ -656,8 +660,9 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 		send_command(o, "*GET,INFO,REV");
 		send_command(o, "*GET,INFO,DREV");
 		send_command(o, "*GET,INFO,FREV");
-		send_command(o, "*GET,INFO,COMMENT");
+		send_command(o, "*GET,INFO,COMMENT,1");
 		send_command(o, "*GET,INFO,ESN");
+		send_command(o, "*GET,DPMR,SENDID");
 	}
 	return RESULT_SUCCESS;
 }
@@ -743,8 +748,8 @@ static void 					*serthread(void *arg)
 			pthread_exit(NULL);
 		}
 
-
 		ast_log(LOG_NOTICE, "[%s] starting normally on %s\n",o->name, o->serdevname);
+
 
 		//mixer_write(o); to be run by call init ?
 		/*snprintf(fname,sizeof(fname) - 1,config1,o->name);
@@ -827,6 +832,7 @@ static void 					*serthread(void *arg)
 					}
 					if (o->debuglevel)
 						ast_verbose("[%s] %s\n", o->name, o->sercommandbuf);
+					parse_pccmdv2_command(o, o->sercommandbuf);
 				}
 			}
 
@@ -873,6 +879,53 @@ static void 					*serthread(void *arg)
 	}
     pthread_exit(NULL);
 }
+
+/*
+ * Parse a PCCMDV2 command
+ */
+static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
+{
+	char 					*buf;
+	char 					*cmd_type;
+	char 					*cmd_category;
+	char 					*cmd_function;
+	char 					*cmd_options;
+
+	/* To remove the '*' at the beginning */
+	buf = cmd + 1;
+	cmd_type = strsep(&buf, ",");
+	cmd_category = strsep(&buf, ",");
+	cmd_function = strsep(&buf, ",");
+	cmd_options = buf;
+	if (!strcmp(cmd_type, "NTF"))
+	{
+		if (!strcmp(cmd_category, "INFO"))
+		{
+			if (!strcmp(cmd_function, "REV"))
+				strcpy(o->inforev, cmd_options);
+			else if (!strcmp(cmd_function, "DREV"))
+				strcpy(o->infodrev, cmd_options);
+			else if (!strcmp(cmd_function, "FREV"))
+				strcpy(o->infofrev, cmd_options);
+			else if (!strcmp(cmd_function, "COMMENT"))
+				strcpy(o->infocomment, cmd_options);
+			else if (!strcmp(cmd_function, "ESN"))
+				strcpy(o->infoesn, cmd_options);
+		}
+		else if (!strcmp(cmd_category, "DPMR"))
+		{
+			if (!strcmp(cmd_function, "SENDID"))
+			{
+				strcpy(o->dpmridtype, strsep(&cmd_options, ","));
+				strcpy(o->dpmriddest, strsep(&cmd_options, ","));
+				strcpy(o->dpmridsrc, cmd_options);
+			}	
+		}
+	}
+	return 1;
+}
+
+
 
 /*
  * reset and close the device if opened,
@@ -1590,10 +1643,19 @@ static int 						radio_param(int fd, int argc, const char *const *argv)
 {
 	struct chan_alsaradio_pvt 	*o;
 
-	if (argc != 2)
-		return RESULT_SHOWUSAGE;
 	o = find_desc(alsaradio_active);
-	(void)send_info_request(o);
+	if (argc == 2) /* just show stuff */
+	{
+		ast_cli(fd, "Active radio interface [%s] on serial port [%s]\n", alsaradio_active, o->serdevname);
+		ast_cli(fd, "REV: \t\t\t%s\n", o->inforev);
+		ast_cli(fd, "DREV: \t\t\t%s\n", o->infodrev);
+		ast_cli(fd, "FREV: \t\t\t%s\n", o->infofrev);
+		ast_cli(fd, "Clone comment: \t\t%s\n", o->infocomment);
+		ast_cli(fd, "ESN: \t\t\t%s\n", o->infoesn);
+		ast_cli(fd, "DPMR ID type: \t\t%s\n", o->dpmridtype);
+		ast_cli(fd, "DPMR ID src: \t\t%s\n", o->dpmridsrc);
+		ast_cli(fd, "DPMR ID dest: \t\t%s\n", o->dpmriddest);
+	}
 	return RESULT_SUCCESS;
 }
 
@@ -2328,6 +2390,10 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 
 	/* Run serial thread for this device */
 	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
+
+
+	send_info_request(o);
+
 	return (0);
 }
 
