@@ -466,9 +466,10 @@ struct chan_alsaradio_pvt {
 	char                    dpmridsrc[TEXT_SIZE];
 	char                    dpmriddest[TEXT_SIZE];
 
-	/* Logger stuff */
+	/* Syslogger stuff */
 	FILE 					*logfile_p;
-	int 					enable_log;
+	char 					*logfile_name = NULL;
+	int 					logfile_enable;
 
 };
 
