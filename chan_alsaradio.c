@@ -823,7 +823,7 @@ static void 					*serthread(void *arg)
 				if (FD_ISSET(o->serdev, &rfds))
 				{
 					i = 0;
-					while (42)
+					while (i < COMMAND_BUFFER_SIZE - 25)
 					{
 						if (read(o->serdev, &c, 1) < 0)
 							ast_log(LOG_ERROR, "Error in read.\n");
