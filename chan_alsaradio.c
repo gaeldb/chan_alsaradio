@@ -822,20 +822,32 @@ static void 					*serthread(void *arg)
 				}
 				if (FD_ISSET(o->serdev, &rfds))
 				{
-					// probably need to protec sercommandbuf with a mutex !!!!!
-					//ast_mutex_lock(&o->sercommandlock) and ast_mutex_unlock(&o->sercommandlock);
-
 					i = 0;
 					while (42)
 					{
 						if (read(o->serdev, &c, 1) < 0)
 							ast_log(LOG_ERROR, "Error in read.\n");
-						if (c == 0x03) // 0x03 = ETX
+						// 0x02 = STX
+						if (c == 0x02)
 						{
-							o->sercommandbuf[i] = '\0';
+							strncpy(&(o->sercommandbuf[i]), "[STX]", 5)
+							i += 5;
+						}
+						// 0x03 = ETX
+						else if (c == 0x03)
+						{
+							strncpy(&(o->sercommandbuf[i]), "[ETX]\0", 6)
+							i += 6;
 							break;
 						}
-						else if (c >= 0x06) // This is a printable character
+						// '\n' and '\r'
+						else if (c == 0x0a || c == 0x0d)
+						{
+							strncpy(&(o->sercommandbuf[i]), (c == 0x0a) ? "[0x0a]" : "[0x0d]", 6)
+							i += 6;
+						}
+						// Printable charaters
+						else if (c >= 0x20) // This is a printable character
 						{
 							o->sercommandbuf[i] = c;
 							i++;
