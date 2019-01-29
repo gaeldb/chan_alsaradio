@@ -103,6 +103,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #define SERIAL_BAUDRATE					B9600
 #define FRAME_SIZE 						160 /* Lets use 160 sample frames, just like GSM.  */
 #define PERIOD_FRAMES 					80	/* 80 Frames, at 2 bytes each */
+#define LOGFILE_NAME 					"/var/log/asterisk/radio.log"
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 static snd_pcm_format_t 				format = SND_PCM_FORMAT_S16_LE;
@@ -468,8 +469,8 @@ struct chan_alsaradio_pvt {
 
 	/* Syslogger stuff */
 	FILE 					*logfile_p;
-	char 					*logfile_name = NULL;
-	int 					logfile_enable;
+	char 					logfile_name[TEXT_SIZE];
+	char 					logfile_enable;
 
 };
 
@@ -500,6 +501,9 @@ static struct chan_alsaradio_pvt
 	.serbaudrate = SERIAL_BAUDRATE,
 	.serdisable = 0,
 	.serdev = -1
+	/* logger stuff */
+	.logfile_name = LOGFILE_NAME;
+	.logfile_disable = 0;
 };
 
 /* the active device */
@@ -1561,14 +1565,14 @@ static struct ast_channel 		*alsaradio_request(
 	struct chan_alsaradio_pvt 	*o = find_desc(data);
 	struct ast_str 				*codec_buf = ast_str_alloca(AST_FORMAT_CAP_NAMES_LEN);
 
-	if (o->debuglevel)
-		ast_log(LOG_NOTICE, "alsaradio_request type:%s, dev:%s, format:%s\n",
-			type, data, ast_format_cap_get_names(cap, &codec_buf));
 	if (o == NULL)
 	{
 		ast_log(LOG_ERROR, "Device %s not found\n", data);
 		return NULL;
 	}
+	if (o->debuglevel)
+		ast_log(LOG_NOTICE, "alsaradio_request type:%s, dev:%s, format:%s\n",
+			type, data, ast_format_cap_get_names(cap, &codec_buf));
 	if (ast_format_cap_iscompatible_format(cap, ast_format_slin) == AST_FORMAT_CMP_NOT_EQUAL)
 	{
 		ast_log(LOG_WARNING, "Format '%s' unsupported\n", ast_format_cap_get_names(cap, &codec_buf));
@@ -1985,6 +1989,8 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			M_STR("output_device", o->outdevname)
 			M_STR("serial_device", o->serdevname)
 			M_UINT("serial_disable", o->serdisable)
+			M_UINT("logger_disable", o->logfile_disable)
+			M_STR("logger_file", o->logfile_name)
 			M_UINT("rxondelay",o->rxondelay);
 			M_END(;
 			);
@@ -2540,9 +2546,32 @@ static int 						load_module(void)
 		else
 			return AST_MODULE_LOAD_FAILURE;
 
+	/* Open log file */
+	if (alsaradio_default.logfile_disable)
+		ast_log(LOG_NOTICE, "Skipping radio log file load: disabled by conf\n");
+	else if (load_log_file() < 0)
+	{
+		alsaradio_default.logfile_disable = 1;
+		ast_log(LOG_WARNING, "Radio log disabled (cannot load file).\n");
+	}
+
 	/* Register CLI command */
 	ast_cli_register_multiple(cli_alsaradio, sizeof(cli_alsaradio) / sizeof(struct ast_cli_entry));
 	return AST_MODULE_LOAD_SUCCESS;
+}
+
+/*
+ * Open log file
+ */
+static int 						load_log_file(void)
+{
+	ast_log(LOG_NOTICE, "Opening log file: %s\n", alsaradio_default.logfile_name);
+	if (!(alsaradio_default.logfile_p = fopen(alsaradio_default.logfile_name, "a")))
+	{
+		ast_log(LOG_ERROR, "Error when opening log file %s: %s\n",
+			alsaradio_default.logfile_name, strerror(errno));
+		return -1;
+	}
 }
 
 /*
@@ -2565,6 +2594,11 @@ static int 						unload_module(void)
 			ast_softhangup(o->owner, AST_SOFTHANGUP_APPUNLOAD);
 		if (o->owner)			/* XXX how ??? */
 			return -1;
+	}
+	if (!alsaradio_default.logfile_disable)
+	{
+		ast_log(LOG_NOTICE, "Close radio log file.\n");
+		fclose(alsaradio_default.logfile_p);
 	}
 	ao2_cleanup(alsaradio_tech.capabilities);
 	alsaradio_tech.capabilities = NULL;
