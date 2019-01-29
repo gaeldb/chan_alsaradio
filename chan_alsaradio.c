@@ -289,7 +289,7 @@ END_CONFIG
 #endif
 
 static char *config = "alsaradio.conf";			/* default config file */
-static char *config1 = "alsaradio_tune_%s.conf";	/* tune config file */
+//static char *config1 = "alsaradio_tune_%s.conf";	/* tune config file */
 
 static FILE *frxcapraw = NULL;
 static FILE *ftxcapraw = NULL;
@@ -470,7 +470,7 @@ struct chan_alsaradio_pvt {
 	/* Syslogger stuff */
 	FILE 					*logfile_p;
 	char 					logfile_name[TEXT_SIZE];
-	char 					logfile_enable;
+	char 					logfile_disable;
 
 };
 
@@ -489,6 +489,7 @@ static struct chan_alsaradio_pvt
 	.boost = BOOST_SCALE,
 	.usedtmf = 1,
 	.rxondelay = 0,
+
 	/* ALSA stuff */
 	.silencesuppression = 0,
 	.silencethreshold = 1000,
@@ -496,21 +497,23 @@ static struct chan_alsaradio_pvt
 	.indev = -1,
 	.outdevname = ALSA_OUTDEV,
 	.outdev = -1,
+
 	/* serial stuff */
 	.serdevname = SERIAL_DEV,
 	.serbaudrate = SERIAL_BAUDRATE,
 	.serdisable = 0,
-	.serdev = -1
+	.serdev = -1,
+
 	/* logger stuff */
-	.logfile_name = LOGFILE_NAME;
-	.logfile_disable = 0;
+	.logfile_name = LOGFILE_NAME,
+	.logfile_disable = 0
 };
 
 /* the active device */
 static char 				*alsaradio_active;
 
 /*	DECLARE FUNCTION PROTOTYPES	*/
-static void 				mixer_write(struct chan_alsaradio_pvt *o);
+//static void 				mixer_write(struct chan_alsaradio_pvt *o);
 /*static void 				tune_write(struct chan_alsaradio_pvt *o);*/
 static struct ast_channel 	*alsaradio_request(const char *type, struct ast_format_cap *cap, const struct ast_assigned_ids *assignedids, const struct ast_channel *requestor, const char *data, int *cause);
 static int 					alsaradio_digit_begin(struct ast_channel *c, char digit);
@@ -531,11 +534,13 @@ static int					alsa_write(struct chan_alsaradio_pvt *o, struct ast_frame *f);
 static struct ast_frame 	*alsa_read(struct chan_alsaradio_pvt *o);
 static int 					serial_init(struct chan_alsaradio_pvt *o);
 static void 				serial_uninit(struct chan_alsaradio_pvt *o);
-static int 					serial_getcor(struct chan_alsaradio_pvt *o);
-static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
+//static int 					serial_getcor(struct chan_alsaradio_pvt *o);
+//static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
 static int 					serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
 static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
 static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
+static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
+static int 					load_log_file(void);
 
 static struct ast_channel_tech
 							alsaradio_tech = {
@@ -596,51 +601,51 @@ if only 1 value. Values: 0-99 (percent) or 0-1 for baboon.
 
 Note: must add -lasound to end of linkage */
 
-static int setamixer(int devnum,char *param, int v1, int v2)
-{
-	int	type;
-	char	str[100];
-	snd_hctl_t *hctl;
-	snd_ctl_elem_id_t *id;
-	snd_ctl_elem_value_t *control;
-	snd_hctl_elem_t *elem;
-	snd_ctl_elem_info_t *info;
+// static int setamixer(int devnum,char *param, int v1, int v2)
+// {
+// 	int	type;
+// 	char	str[100];
+// 	snd_hctl_t *hctl;
+// 	snd_ctl_elem_id_t *id;
+// 	snd_ctl_elem_value_t *control;
+// 	snd_hctl_elem_t *elem;
+// 	snd_ctl_elem_info_t *info;
 
-	sprintf(str,"hw:%d",devnum);
-	if (snd_hctl_open(&hctl, str, 0)) return(-1);
-	snd_hctl_load(hctl);
-	snd_ctl_elem_id_alloca(&id);
-	snd_ctl_elem_id_set_interface(id, SND_CTL_ELEM_IFACE_MIXER);
-	snd_ctl_elem_id_set_name(id, param);  
-	elem = snd_hctl_find_elem(hctl, id);
-	if (!elem)
-	{
-		snd_hctl_close(hctl);
-		return(-1);
-	}
-	snd_ctl_elem_info_alloca(&info);
-	snd_hctl_elem_info(elem,info);
-	type = snd_ctl_elem_info_get_type(info);
-	snd_ctl_elem_value_alloca(&control);
-	snd_ctl_elem_value_set_id(control, id);    
-	switch(type)
-	{
-	    case SND_CTL_ELEM_TYPE_INTEGER:
-		snd_ctl_elem_value_set_integer(control, 0, v1);
-		if (v2 > 0) snd_ctl_elem_value_set_integer(control, 1, v2);
-		break;
-	    case SND_CTL_ELEM_TYPE_BOOLEAN:
-		snd_ctl_elem_value_set_integer(control, 0, (v1 != 0));
-		break;
-	}
-	if (snd_hctl_elem_write(elem, control))
-	{
-		snd_hctl_close(hctl);
-		return(-1);
-	}
-	snd_hctl_close(hctl);
-	return(0);
-}
+// 	sprintf(str,"hw:%d",devnum);
+// 	if (snd_hctl_open(&hctl, str, 0)) return(-1);
+// 	snd_hctl_load(hctl);
+// 	snd_ctl_elem_id_alloca(&id);
+// 	snd_ctl_elem_id_set_interface(id, SND_CTL_ELEM_IFACE_MIXER);
+// 	snd_ctl_elem_id_set_name(id, param);  
+// 	elem = snd_hctl_find_elem(hctl, id);
+// 	if (!elem)
+// 	{
+// 		snd_hctl_close(hctl);
+// 		return(-1);
+// 	}
+// 	snd_ctl_elem_info_alloca(&info);
+// 	snd_hctl_elem_info(elem,info);
+// 	type = snd_ctl_elem_info_get_type(info);
+// 	snd_ctl_elem_value_alloca(&control);
+// 	snd_ctl_elem_value_set_id(control, id);    
+// 	switch(type)
+// 	{
+// 	    case SND_CTL_ELEM_TYPE_INTEGER:
+// 		snd_ctl_elem_value_set_integer(control, 0, v1);
+// 		if (v2 > 0) snd_ctl_elem_value_set_integer(control, 1, v2);
+// 		break;
+// 	    case SND_CTL_ELEM_TYPE_BOOLEAN:
+// 		snd_ctl_elem_value_set_integer(control, 0, (v1 != 0));
+// 		break;
+// 	}
+// 	if (snd_hctl_elem_write(elem, control))
+// 	{
+// 		snd_hctl_close(hctl);
+// 		return(-1);
+// 	}
+// 	snd_hctl_close(hctl);
+// 	return(0);
+// }
 
 /*
  * Write in pipe to inform serial thread that it needs to run PTT action
@@ -729,8 +734,9 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 */
 static void 					*serthread(void *arg)
 {
-	unsigned char keyed,ctcssed,txreq;
+	//unsigned char keyed,ctcssed,
 
+	unsigned char 				txreq;
 	int 						res;
 	struct chan_alsaradio_pvt 	*o = (struct chan_alsaradio_pvt *) arg;
 	struct timeval 				to;
@@ -830,20 +836,20 @@ static void 					*serthread(void *arg)
 						// 0x02 = STX
 						if (c == 0x02)
 						{
-							strncpy(&(o->sercommandbuf[i]), "[STX]", 5)
+							strncpy(&(o->sercommandbuf[i]), "[STX]", 5);
 							i += 5;
 						}
 						// 0x03 = ETX
 						else if (c == 0x03)
 						{
-							strncpy(&(o->sercommandbuf[i]), "[ETX]\0", 6)
+							strncpy(&(o->sercommandbuf[i]), "[ETX]\0", 6);
 							i += 6;
 							break;
 						}
 						// '\n' and '\r'
-						else if (c == 0x0a || c == 0x0d)
+						else if (c == 0x0a || c == 0x0d)
 						{
-							strncpy(&(o->sercommandbuf[i]), (c == 0x0a) ? "[0x0a]" : "[0x0d]", 6)
+							strncpy(&(o->sercommandbuf[i]), c == 0x0a ? "[0x0a]" : "[0x0d]", 6);
 							i += 6;
 						}
 						// Printable charaters
@@ -856,7 +862,7 @@ static void 					*serthread(void *arg)
 					if (o->debuglevel)
 						ast_verbose("[%s] %s\n", o->name, o->sercommandbuf);
 					if (!alsaradio_default.logfile_disable)
-						log_pccmdv2_command(o->sercommandbuf);
+						log_pccmdv2_command(o, o->sercommandbuf);
 					parse_pccmdv2_command(o, o->sercommandbuf);
 				}
 			}
@@ -950,18 +956,30 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 /*
  * Log a PCCMDV2 COMMAND
  */
-static int 					log_pccmdv2_command(char *cmd)
+static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 {
+	int 					ret;
     time_t 					timer;
-    char 					tm_buffer[26];
+	struct ast_str 			*line;
     struct tm  				*tm_info;
+    char 					tm_buffer[26];
 
     time(&timer);
     tm_info = localtime(&timer);
     strftime(tm_buffer, 26, "%Y/%m/%d %H:%M:%S", tm_info);
-	if (fprintf(alsaradio_default.logfile_p, "%s:000;HOST@IP;VOIE;COMRX;%s\n", tm_buffer, cmd) <= 0)
-		ast_log(LOG_ERROR, "Cannot write in: %s\n", alsaradio_default.logfile_name);
+    line = ast_str_create(MAX_BUFFER_SIZE + COMMAND_BUFFER_SIZE);
+	ast_str_set(&line, 0, "%s;%s@IP;CANAL;COMRX;%s\n", tm_buffer, o->name, cmd);
+	if ((ret = fwrite(ast_str_buffer(line), sizeof(char), ast_str_strlen(line), alsaradio_default.logfile_p)) <= 0)
+		{
+	 		ast_log(LOG_ERROR, "Write error in %s: %s\n", alsaradio_default.logfile_name, strerror(errno));
+	 		ast_free(line);
+	 		return -1;
+		}
+	fflush(alsaradio_default.logfile_p);   
+	ast_free(line);
 	return 0;
+
+
 }
 
 
@@ -1855,6 +1873,10 @@ static char reset_usage[] =
 	"Usage: aradio reset\n"
 	"       Perform a reset (power switch) to active radio.\n";
 
+static char debug_usage[] =
+	"Usage: aradio debug [off]\n"
+	"       Enable or disable debug level logging mode.\n";
+
 static char param_usage[] =
 	"Usage: aradio param\n"
 	"       Manage parameters of active radio.\n";
@@ -1942,19 +1964,19 @@ static void tune_write(struct chan_alsaradio_pvt *o)
 }*/
 
 //
-static void mixer_write(struct chan_alsaradio_pvt *o)
-{
-	//setamixer(o->devicenum,MIXER_PARAM_MIC_PLAYBACK_SW,0,0);
-	//setamixer(o->devicenum,MIXER_PARAM_MIC_PLAYBACK_VOL,0,0);
-	//setamixer(o->devicenum,MIXER_PARAM_SPKR_PLAYBACK_SW,1,0);
-	//setamixer(o->devicenum,MIXER_PARAM_SPKR_PLAYBACK_VOL,
-	//	make_spkr_playback_value(o,o->txmixaset),
-	//	make_spkr_playback_value(o,o->txmixbset));
-	//setamixer(o->devicenum,MIXER_PARAM_MIC_CAPTURE_VOL,
-	//	o->rxmixerset * o->micmax / 1000,0);
-	//setamixer(o->devicenum,MIXER_PARAM_MIC_BOOST,o->rxboostset,0);
-	//setamixer(o->devicenum,MIXER_PARAM_MIC_CAPTURE_SW,1,0);
-}
+// static void mixer_write(struct chan_alsaradio_pvt *o)
+// {
+// 	//setamixer(o->devicenum,MIXER_PARAM_MIC_PLAYBACK_SW,0,0);
+// 	//setamixer(o->devicenum,MIXER_PARAM_MIC_PLAYBACK_VOL,0,0);
+// 	//setamixer(o->devicenum,MIXER_PARAM_SPKR_PLAYBACK_SW,1,0);
+// 	//setamixer(o->devicenum,MIXER_PARAM_SPKR_PLAYBACK_VOL,
+// 	//	make_spkr_playback_value(o,o->txmixaset),
+// 	//	make_spkr_playback_value(o,o->txmixbset));
+// 	//setamixer(o->devicenum,MIXER_PARAM_MIC_CAPTURE_VOL,
+// 	//	o->rxmixerset * o->micmax / 1000,0);
+// 	//setamixer(o->devicenum,MIXER_PARAM_MIC_BOOST,o->rxboostset,0);
+// 	//setamixer(o->devicenum,MIXER_PARAM_MIC_CAPTURE_SW,1,0);
+// }
 /*
 	adjust dsp multiplier to add resolution to tx level adjustment
 */
@@ -2158,19 +2180,19 @@ static char *handle_aradio_param(struct ast_cli_entry *e,
 // 	return res2cli(console_rkey(a->fd,a->argc,a->argv));
 // }
 
-static char *handle_aradio_tune(struct ast_cli_entry *e,
-	int cmd, struct ast_cli_args *a)
-{
-        switch (cmd) {
-        case CLI_INIT:
-                e->command = "aradio tune";
-                e->usage = radio_tune_usage;
-                return NULL;
-        case CLI_GENERATE:
-                return NULL;
-	}
-	return res2cli(radio_tune(a->fd,a->argc,a->argv));
-}
+// static char *handle_aradio_tune(struct ast_cli_entry *e,
+// 	int cmd, struct ast_cli_args *a)
+// {
+//         switch (cmd) {
+//         case CLI_INIT:
+//                 e->command = "aradio tune";
+//                 e->usage = radio_tune_usage;
+//                 return NULL;
+//         case CLI_GENERATE:
+//                 return NULL;
+// 	}
+// 	return res2cli(radio_tune(a->fd,a->argc,a->argv));
+// }
 
 static char *handle_aradio_debug(struct ast_cli_entry *e,
 	int cmd, struct ast_cli_args *a)
@@ -2178,7 +2200,7 @@ static char *handle_aradio_debug(struct ast_cli_entry *e,
         switch (cmd) {
         case CLI_INIT:
                 e->command = "aradio debug";
-                e->usage = radio_tune_usage;
+                e->usage = debug_usage;
                 return NULL;
         case CLI_GENERATE:
                 return NULL;
@@ -2192,7 +2214,7 @@ static char *handle_aradio_debug_off(struct ast_cli_entry *e,
         switch (cmd) {
         case CLI_INIT:
                 e->command = "aradio debug off";
-                e->usage = radio_tune_usage;
+                e->usage = debug_usage;
                 return NULL;
         case CLI_GENERATE:
                 return NULL;
@@ -2456,40 +2478,40 @@ static void 		serial_uninit(struct chan_alsaradio_pvt *o)
 	return;
 }
 
-static int serial_getcor(struct chan_alsaradio_pvt *o)
-{
-	int ret, status;
+// static int serial_getcor(struct chan_alsaradio_pvt *o)
+// {
+// 	int ret, status;
 
-	if (o->serdisable)
-		return (0);
+// 	if (o->serdisable)
+// 		return (0);
 
-	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
-        {
-                ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
-                return(-1);
-        }
+// 	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
+//         {
+//                 ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
+//                 return(-1);
+//         }
 
-	//ast_log(LOG_NOTICE, "modem lines: %x\n", status);
+// 	//ast_log(LOG_NOTICE, "modem lines: %x\n", status);
 
-	/* due to HW interface, COR signal is inverted */
-	return (status & TIOCM_DSR) ? 0 : 1; 
-}
+// 	 //due to HW interface, COR signal is inverted 
+// 	return (status & TIOCM_DSR) ? 0 : 1; 
+// }
 
-static int serial_getctcss(struct chan_alsaradio_pvt *o)
-{
-	int ret, status;
+// static int serial_getctcss(struct chan_alsaradio_pvt *o)
+// {
+// 	int ret, status;
 
-	if (o->serdisable)
-		return (0);
+// 	if (o->serdisable)
+// 		return (0);
 
-	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
-        {
-                ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
-                return(-1);
-        }
+// 	if ((ret = ioctl(o->serdev, TIOCMGET, &status)) < 0)
+//         {
+//                 ast_log(LOG_ERROR, "Unable to get modem lines for %s: %s\n", o->serdevname, strerror(errno));
+//                 return(-1);
+//         }
 
-	return (status & TIOCM_CTS) ? 1 : 0; 
-}
+// 	return (status & TIOCM_CTS) ? 1 : 0; 
+// }
 
 /*
  * This function push or release PTT by setting TIOCM_DTR in serial port
@@ -2599,6 +2621,7 @@ static int 						load_log_file(void)
 			alsaradio_default.logfile_name, strerror(errno));
 		return -1;
 	}
+	return 0;
 }
 
 /*
