@@ -843,13 +843,12 @@ static void 					*serthread(void *arg)
 					}
 					if (o->debuglevel)
 						ast_verbose("[%s] %s\n", o->name, o->sercommandbuf);
+					if (!alsaradio_default.logfile_disable)
+						log_pccmdv2_command(o->sercommandbuf);
 					parse_pccmdv2_command(o, o->sercommandbuf);
 				}
 			}
-
-			
-			
-			
+		
 
 /*
 			keyed = sim_cor || serial_getcor(o);
@@ -936,6 +935,22 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 	return 1;
 }
 
+/*
+ * Log a PCCMDV2 COMMAND
+ */
+static int 					log_pccmdv2_command(char *cmd)
+{
+    time_t 					timer;
+    char 					tm_buffer[26];
+    struct tm  				*tm_info;
+
+    time(&timer);
+    tm_info = localtime(&timer);
+    strftime(tm_buffer, 26, "%Y/%m/%d %H:%M:%S", tm_info);
+	if (fprintf(alsaradio_default.logfile_p, "%s:000;HOST@IP;VOIE;COMRX;%s\n", tm_buffer, cmd) <= 0)
+		ast_log(LOG_ERROR, "Cannot write in: %s\n", alsaradio_default.logfile_name);
+	return 0;
+}
 
 
 /*
