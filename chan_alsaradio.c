@@ -1682,89 +1682,89 @@ static int 						radio_param(int fd, int argc, const char *const *argv)
 // 	return 0;
 // }
 
-static int 						radio_tune(int fd, int argc, const char *const *argv)
-{
-	struct chan_alsaradio_pvt 	*o;
-	int 						i;
+// static int 						radio_tune(int fd, int argc, const char *const *argv)
+// {
+// 	struct chan_alsaradio_pvt 	*o;
+// 	int 						i;
 
-	o = find_desc(alsaradio_active);
-	i = 0;
-	if ((argc < 2) || (argc > 4))
-		return RESULT_SHOWUSAGE; 
-	if (argc == 2) /* just show stuff */
-	{
-		ast_cli(fd,"Active radio interface is [%s]\n",alsaradio_active);
-		ast_cli(fd,"Device String is %s\n",o->serdevname);
-		ast_cli(fd,"Rx Level currently set to %d\n",o->rxmixerset);
-		ast_cli(fd,"Tx Output A Level currently set to %d\n",o->txmixaset);
-		ast_cli(fd,"Tx Output B Level currently set to %d\n",o->txmixbset);
-		return RESULT_SHOWUSAGE;
-	}
-	else if (!strcasecmp(argv[2],"rx"))
-	{
-		i = 0;
-		if (argc == 3)
-			ast_cli(fd,"Current setting on Rx Channel is %d\n",o->rxmixerset);
-		else
-		{
-			i = atoi(argv[3]);
-			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
-		 	o->rxmixerset = i;
-			ast_cli(fd,"Changed setting on RX Channel to %d\n",o->rxmixerset);
-			mixer_write(o);
-		}
-	}
-	else if (!strcasecmp(argv[2],"txa"))
-	{
-		i = 0;
-		if (argc == 3)
-			ast_cli(fd,"Current setting on Tx Channel A is %d\n",o->txmixaset);
-		else
-		{
-			i = atoi(argv[3]);
-			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
-		 	o->txmixaset = i;
-			ast_cli(fd,"Changed setting on TX Channel A to %d\n",o->txmixaset);
-			mixer_write(o);
-		}
-	}
-	else if (!strcasecmp(argv[2],"txb"))
-	{
-		i = 0;
-		if (argc == 3)
-			ast_cli(fd,"Current setting on Tx Channel A is %d\n",o->txmixbset);
-		else
-		{
-			i = atoi(argv[3]);
-			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
-		 	o->txmixbset = i;
-			ast_cli(fd,"Changed setting on TX Channel A to %d\n",o->txmixbset);
-			mixer_write(o);
-		}
-	}
-	else if (!strcasecmp(argv[2],"nocap")) 	
-	{
-		ast_cli(fd,"File capture (raw) was rx=%d tx=%d and now off.\n",o->b.rxcapraw,o->b.txcapraw);
-		o->b.rxcapraw=o->b.txcapraw=0;
-		if (frxcapraw) { fclose(frxcapraw); frxcapraw = NULL; }
-		if (ftxcapraw) { fclose(ftxcapraw); ftxcapraw = NULL; }
-	}
-	else if (!strcasecmp(argv[2],"rxcap")) 
-	{
-		if (!frxcapraw) frxcapraw = fopen(RX_CAP_RAW_FILE,"w");
-		ast_cli(fd,"cap rx raw on.\n");
-		o->b.rxcapraw = 1;
-	}
-	else if (!strcasecmp(argv[2],"txcap")) 
-	{
-		if (!ftxcapraw) ftxcapraw = fopen(TX_CAP_RAW_FILE,"w");
-		ast_cli(fd,"cap tx raw on.\n");
-		o->b.txcapraw = 1;
-	}
-	else
-        return RESULT_SHOWUSAGE;
-	return RESULT_SUCCESS;
-}
+// 	o = find_desc(alsaradio_active);
+// 	i = 0;
+// 	if ((argc < 2) || (argc > 4))
+// 		return RESULT_SHOWUSAGE; 
+// 	if (argc == 2) /* just show stuff */
+// 	{
+// 		ast_cli(fd,"Active radio interface is [%s]\n",alsaradio_active);
+// 		ast_cli(fd,"Device String is %s\n",o->serdevname);
+// 		ast_cli(fd,"Rx Level currently set to %d\n",o->rxmixerset);
+// 		ast_cli(fd,"Tx Output A Level currently set to %d\n",o->txmixaset);
+// 		ast_cli(fd,"Tx Output B Level currently set to %d\n",o->txmixbset);
+// 		return RESULT_SHOWUSAGE;
+// 	}
+// 	else if (!strcasecmp(argv[2],"rx"))
+// 	{
+// 		i = 0;
+// 		if (argc == 3)
+// 			ast_cli(fd,"Current setting on Rx Channel is %d\n",o->rxmixerset);
+// 		else
+// 		{
+// 			i = atoi(argv[3]);
+// 			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
+// 		 	o->rxmixerset = i;
+// 			ast_cli(fd,"Changed setting on RX Channel to %d\n",o->rxmixerset);
+// 			mixer_write(o);
+// 		}
+// 	}
+// 	else if (!strcasecmp(argv[2],"txa"))
+// 	{
+// 		i = 0;
+// 		if (argc == 3)
+// 			ast_cli(fd,"Current setting on Tx Channel A is %d\n",o->txmixaset);
+// 		else
+// 		{
+// 			i = atoi(argv[3]);
+// 			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
+// 		 	o->txmixaset = i;
+// 			ast_cli(fd,"Changed setting on TX Channel A to %d\n",o->txmixaset);
+// 			mixer_write(o);
+// 		}
+// 	}
+// 	else if (!strcasecmp(argv[2],"txb"))
+// 	{
+// 		i = 0;
+// 		if (argc == 3)
+// 			ast_cli(fd,"Current setting on Tx Channel A is %d\n",o->txmixbset);
+// 		else
+// 		{
+// 			i = atoi(argv[3]);
+// 			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
+// 		 	o->txmixbset = i;
+// 			ast_cli(fd,"Changed setting on TX Channel A to %d\n",o->txmixbset);
+// 			mixer_write(o);
+// 		}
+// 	}
+// 	else if (!strcasecmp(argv[2],"nocap")) 	
+// 	{
+// 		ast_cli(fd,"File capture (raw) was rx=%d tx=%d and now off.\n",o->b.rxcapraw,o->b.txcapraw);
+// 		o->b.rxcapraw=o->b.txcapraw=0;
+// 		if (frxcapraw) { fclose(frxcapraw); frxcapraw = NULL; }
+// 		if (ftxcapraw) { fclose(ftxcapraw); ftxcapraw = NULL; }
+// 	}
+// 	else if (!strcasecmp(argv[2],"rxcap")) 
+// 	{
+// 		if (!frxcapraw) frxcapraw = fopen(RX_CAP_RAW_FILE,"w");
+// 		ast_cli(fd,"cap rx raw on.\n");
+// 		o->b.rxcapraw = 1;
+// 	}
+// 	else if (!strcasecmp(argv[2],"txcap")) 
+// 	{
+// 		if (!ftxcapraw) ftxcapraw = fopen(TX_CAP_RAW_FILE,"w");
+// 		ast_cli(fd,"cap tx raw on.\n");
+// 		o->b.txcapraw = 1;
+// 	}
+// 	else
+//         return RESULT_SHOWUSAGE;
+// 	return RESULT_SUCCESS;
+// }
 
 /*
 	CLI debugging on and off
@@ -1848,14 +1848,14 @@ static char active_usage[] =
 /*
 radio tune 6 3000		measured tx value
 */
-static char radio_tune_usage[] =
-	"Usage: aradio tune <function>\n"
-	"       rx [newsetting]\n"
-	"       txa [newsetting]\n"
-	"       txb [newsetting]\n"
-	"       save (settings to tuning file)\n"
-	"       load (tuning settings from EEPROM)\n"
-	"\n       All [newsetting]'s are values 0-999\n\n";
+// static char radio_tune_usage[] =
+	// "Usage: aradio tune <function>\n"
+	// "       rx [newsetting]\n"
+	// "       txa [newsetting]\n"
+	// "       txb [newsetting]\n"
+	// "       save (settings to tuning file)\n"
+	// "       load (tuning settings from EEPROM)\n"
+	// "\n       All [newsetting]'s are values 0-999\n\n";
 
 static void store_rxcdtype(struct chan_alsaradio_pvt *o, char *s)
 {
