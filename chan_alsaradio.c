@@ -103,6 +103,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #define SERIAL_BAUDRATE					B9600
 #define FRAME_SIZE 						160 /* Lets use 160 sample frames, just like GSM.  */
 #define PERIOD_FRAMES 					80	/* 80 Frames, at 2 bytes each */
+#define LOGFILE_NAME 					"/var/log/asterisk/radio.log"
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 static snd_pcm_format_t 				format = SND_PCM_FORMAT_S16_LE;
@@ -465,6 +466,12 @@ struct chan_alsaradio_pvt {
 	char                    dpmridtype[TEXT_SIZE];
 	char                    dpmridsrc[TEXT_SIZE];
 	char                    dpmriddest[TEXT_SIZE];
+
+	/* Syslogger stuff */
+	FILE 					*logfile_p;
+	char 					logfile_name[TEXT_SIZE];
+	char 					logfile_enable;
+
 };
 
 static struct chan_alsaradio_pvt 
@@ -494,6 +501,9 @@ static struct chan_alsaradio_pvt
 	.serbaudrate = SERIAL_BAUDRATE,
 	.serdisable = 0,
 	.serdev = -1
+	/* logger stuff */
+	.logfile_name = LOGFILE_NAME;
+	.logfile_disable = 0;
 };
 
 /* the active device */
@@ -812,20 +822,32 @@ static void 					*serthread(void *arg)
 				}
 				if (FD_ISSET(o->serdev, &rfds))
 				{
-					// probably need to protec sercommandbuf with a mutex !!!!!
-					//ast_mutex_lock(&o->sercommandlock) and ast_mutex_unlock(&o->sercommandlock);
-
 					i = 0;
-					while (42)
+					while (i < COMMAND_BUFFER_SIZE - 25)
 					{
 						if (read(o->serdev, &c, 1) < 0)
 							ast_log(LOG_ERROR, "Error in read.\n");
-						if (c == 0x03) // 0x03 = ETX
+						// 0x02 = STX
+						if (c == 0x02)
 						{
-							o->sercommandbuf[i] = '\0';
+							strncpy(&(o->sercommandbuf[i]), "[STX]", 5)
+							i += 5;
+						}
+						// 0x03 = ETX
+						else if (c == 0x03)
+						{
+							strncpy(&(o->sercommandbuf[i]), "[ETX]\0", 6)
+							i += 6;
 							break;
 						}
-						else if (c >= 0x06) // This is a printable character
+						// '\n' and '\r'
+						else if (c == 0x0a || c == 0x0d)
+						{
+							strncpy(&(o->sercommandbuf[i]), (c == 0x0a) ? "[0x0a]" : "[0x0d]", 6)
+							i += 6;
+						}
+						// Printable charaters
+						else if (c >= 0x20) // This is a printable character
 						{
 							o->sercommandbuf[i] = c;
 							i++;
@@ -833,13 +855,12 @@ static void 					*serthread(void *arg)
 					}
 					if (o->debuglevel)
 						ast_verbose("[%s] %s\n", o->name, o->sercommandbuf);
+					if (!alsaradio_default.logfile_disable)
+						log_pccmdv2_command(o->sercommandbuf);
 					parse_pccmdv2_command(o, o->sercommandbuf);
 				}
 			}
-
-			
-			
-			
+		
 
 /*
 			keyed = sim_cor || serial_getcor(o);
@@ -926,6 +947,22 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 	return 1;
 }
 
+/*
+ * Log a PCCMDV2 COMMAND
+ */
+static int 					log_pccmdv2_command(char *cmd)
+{
+    time_t 					timer;
+    char 					tm_buffer[26];
+    struct tm  				*tm_info;
+
+    time(&timer);
+    tm_info = localtime(&timer);
+    strftime(tm_buffer, 26, "%Y/%m/%d %H:%M:%S", tm_info);
+	if (fprintf(alsaradio_default.logfile_p, "%s:000;HOST@IP;VOIE;COMRX;%s\n", tm_buffer, cmd) <= 0)
+		ast_log(LOG_ERROR, "Cannot write in: %s\n", alsaradio_default.logfile_name);
+	return 0;
+}
 
 
 /*
@@ -1555,14 +1592,14 @@ static struct ast_channel 		*alsaradio_request(
 	struct chan_alsaradio_pvt 	*o = find_desc(data);
 	struct ast_str 				*codec_buf = ast_str_alloca(AST_FORMAT_CAP_NAMES_LEN);
 
-	if (o->debuglevel)
-		ast_log(LOG_NOTICE, "alsaradio_request type:%s, dev:%s, format:%s\n",
-			type, data, ast_format_cap_get_names(cap, &codec_buf));
 	if (o == NULL)
 	{
 		ast_log(LOG_ERROR, "Device %s not found\n", data);
 		return NULL;
 	}
+	if (o->debuglevel)
+		ast_log(LOG_NOTICE, "alsaradio_request type:%s, dev:%s, format:%s\n",
+			type, data, ast_format_cap_get_names(cap, &codec_buf));
 	if (ast_format_cap_iscompatible_format(cap, ast_format_slin) == AST_FORMAT_CMP_NOT_EQUAL)
 	{
 		ast_log(LOG_WARNING, "Format '%s' unsupported\n", ast_format_cap_get_names(cap, &codec_buf));
@@ -1672,89 +1709,89 @@ static int 						radio_param(int fd, int argc, const char *const *argv)
 // 	return 0;
 // }
 
-static int 						radio_tune(int fd, int argc, const char *const *argv)
-{
-	struct chan_alsaradio_pvt 	*o;
-	int 						i;
+// static int 						radio_tune(int fd, int argc, const char *const *argv)
+// {
+// 	struct chan_alsaradio_pvt 	*o;
+// 	int 						i;
 
-	o = find_desc(alsaradio_active);
-	i = 0;
-	if ((argc < 2) || (argc > 4))
-		return RESULT_SHOWUSAGE; 
-	if (argc == 2) /* just show stuff */
-	{
-		ast_cli(fd,"Active radio interface is [%s]\n",alsaradio_active);
-		ast_cli(fd,"Device String is %s\n",o->serdevname);
-		ast_cli(fd,"Rx Level currently set to %d\n",o->rxmixerset);
-		ast_cli(fd,"Tx Output A Level currently set to %d\n",o->txmixaset);
-		ast_cli(fd,"Tx Output B Level currently set to %d\n",o->txmixbset);
-		return RESULT_SHOWUSAGE;
-	}
-	else if (!strcasecmp(argv[2],"rx"))
-	{
-		i = 0;
-		if (argc == 3)
-			ast_cli(fd,"Current setting on Rx Channel is %d\n",o->rxmixerset);
-		else
-		{
-			i = atoi(argv[3]);
-			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
-		 	o->rxmixerset = i;
-			ast_cli(fd,"Changed setting on RX Channel to %d\n",o->rxmixerset);
-			mixer_write(o);
-		}
-	}
-	else if (!strcasecmp(argv[2],"txa"))
-	{
-		i = 0;
-		if (argc == 3)
-			ast_cli(fd,"Current setting on Tx Channel A is %d\n",o->txmixaset);
-		else
-		{
-			i = atoi(argv[3]);
-			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
-		 	o->txmixaset = i;
-			ast_cli(fd,"Changed setting on TX Channel A to %d\n",o->txmixaset);
-			mixer_write(o);
-		}
-	}
-	else if (!strcasecmp(argv[2],"txb"))
-	{
-		i = 0;
-		if (argc == 3)
-			ast_cli(fd,"Current setting on Tx Channel A is %d\n",o->txmixbset);
-		else
-		{
-			i = atoi(argv[3]);
-			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
-		 	o->txmixbset = i;
-			ast_cli(fd,"Changed setting on TX Channel A to %d\n",o->txmixbset);
-			mixer_write(o);
-		}
-	}
-	else if (!strcasecmp(argv[2],"nocap")) 	
-	{
-		ast_cli(fd,"File capture (raw) was rx=%d tx=%d and now off.\n",o->b.rxcapraw,o->b.txcapraw);
-		o->b.rxcapraw=o->b.txcapraw=0;
-		if (frxcapraw) { fclose(frxcapraw); frxcapraw = NULL; }
-		if (ftxcapraw) { fclose(ftxcapraw); ftxcapraw = NULL; }
-	}
-	else if (!strcasecmp(argv[2],"rxcap")) 
-	{
-		if (!frxcapraw) frxcapraw = fopen(RX_CAP_RAW_FILE,"w");
-		ast_cli(fd,"cap rx raw on.\n");
-		o->b.rxcapraw = 1;
-	}
-	else if (!strcasecmp(argv[2],"txcap")) 
-	{
-		if (!ftxcapraw) ftxcapraw = fopen(TX_CAP_RAW_FILE,"w");
-		ast_cli(fd,"cap tx raw on.\n");
-		o->b.txcapraw = 1;
-	}
-	else
-        return RESULT_SHOWUSAGE;
-	return RESULT_SUCCESS;
-}
+// 	o = find_desc(alsaradio_active);
+// 	i = 0;
+// 	if ((argc < 2) || (argc > 4))
+// 		return RESULT_SHOWUSAGE; 
+// 	if (argc == 2) /* just show stuff */
+// 	{
+// 		ast_cli(fd,"Active radio interface is [%s]\n",alsaradio_active);
+// 		ast_cli(fd,"Device String is %s\n",o->serdevname);
+// 		ast_cli(fd,"Rx Level currently set to %d\n",o->rxmixerset);
+// 		ast_cli(fd,"Tx Output A Level currently set to %d\n",o->txmixaset);
+// 		ast_cli(fd,"Tx Output B Level currently set to %d\n",o->txmixbset);
+// 		return RESULT_SHOWUSAGE;
+// 	}
+// 	else if (!strcasecmp(argv[2],"rx"))
+// 	{
+// 		i = 0;
+// 		if (argc == 3)
+// 			ast_cli(fd,"Current setting on Rx Channel is %d\n",o->rxmixerset);
+// 		else
+// 		{
+// 			i = atoi(argv[3]);
+// 			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
+// 		 	o->rxmixerset = i;
+// 			ast_cli(fd,"Changed setting on RX Channel to %d\n",o->rxmixerset);
+// 			mixer_write(o);
+// 		}
+// 	}
+// 	else if (!strcasecmp(argv[2],"txa"))
+// 	{
+// 		i = 0;
+// 		if (argc == 3)
+// 			ast_cli(fd,"Current setting on Tx Channel A is %d\n",o->txmixaset);
+// 		else
+// 		{
+// 			i = atoi(argv[3]);
+// 			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
+// 		 	o->txmixaset = i;
+// 			ast_cli(fd,"Changed setting on TX Channel A to %d\n",o->txmixaset);
+// 			mixer_write(o);
+// 		}
+// 	}
+// 	else if (!strcasecmp(argv[2],"txb"))
+// 	{
+// 		i = 0;
+// 		if (argc == 3)
+// 			ast_cli(fd,"Current setting on Tx Channel A is %d\n",o->txmixbset);
+// 		else
+// 		{
+// 			i = atoi(argv[3]);
+// 			if ((i < 0) || (i > 999)) return RESULT_SHOWUSAGE;
+// 		 	o->txmixbset = i;
+// 			ast_cli(fd,"Changed setting on TX Channel A to %d\n",o->txmixbset);
+// 			mixer_write(o);
+// 		}
+// 	}
+// 	else if (!strcasecmp(argv[2],"nocap")) 	
+// 	{
+// 		ast_cli(fd,"File capture (raw) was rx=%d tx=%d and now off.\n",o->b.rxcapraw,o->b.txcapraw);
+// 		o->b.rxcapraw=o->b.txcapraw=0;
+// 		if (frxcapraw) { fclose(frxcapraw); frxcapraw = NULL; }
+// 		if (ftxcapraw) { fclose(ftxcapraw); ftxcapraw = NULL; }
+// 	}
+// 	else if (!strcasecmp(argv[2],"rxcap")) 
+// 	{
+// 		if (!frxcapraw) frxcapraw = fopen(RX_CAP_RAW_FILE,"w");
+// 		ast_cli(fd,"cap rx raw on.\n");
+// 		o->b.rxcapraw = 1;
+// 	}
+// 	else if (!strcasecmp(argv[2],"txcap")) 
+// 	{
+// 		if (!ftxcapraw) ftxcapraw = fopen(TX_CAP_RAW_FILE,"w");
+// 		ast_cli(fd,"cap tx raw on.\n");
+// 		o->b.txcapraw = 1;
+// 	}
+// 	else
+//         return RESULT_SHOWUSAGE;
+// 	return RESULT_SUCCESS;
+// }
 
 /*
 	CLI debugging on and off
@@ -1838,14 +1875,14 @@ static char active_usage[] =
 /*
 radio tune 6 3000		measured tx value
 */
-static char radio_tune_usage[] =
-	"Usage: aradio tune <function>\n"
-	"       rx [newsetting]\n"
-	"       txa [newsetting]\n"
-	"       txb [newsetting]\n"
-	"       save (settings to tuning file)\n"
-	"       load (tuning settings from EEPROM)\n"
-	"\n       All [newsetting]'s are values 0-999\n\n";
+// static char radio_tune_usage[] =
+	// "Usage: aradio tune <function>\n"
+	// "       rx [newsetting]\n"
+	// "       txa [newsetting]\n"
+	// "       txb [newsetting]\n"
+	// "       save (settings to tuning file)\n"
+	// "       load (tuning settings from EEPROM)\n"
+	// "\n       All [newsetting]'s are values 0-999\n\n";
 
 static void store_rxcdtype(struct chan_alsaradio_pvt *o, char *s)
 {
@@ -1979,6 +2016,8 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			M_STR("output_device", o->outdevname)
 			M_STR("serial_device", o->serdevname)
 			M_UINT("serial_disable", o->serdisable)
+			M_UINT("logger_disable", o->logfile_disable)
+			M_STR("logger_file", o->logfile_name)
 			M_UINT("rxondelay",o->rxondelay);
 			M_END(;
 			);
@@ -2534,9 +2573,32 @@ static int 						load_module(void)
 		else
 			return AST_MODULE_LOAD_FAILURE;
 
+	/* Open log file */
+	if (alsaradio_default.logfile_disable)
+		ast_log(LOG_NOTICE, "Skipping radio log file load: disabled by conf\n");
+	else if (load_log_file() < 0)
+	{
+		alsaradio_default.logfile_disable = 1;
+		ast_log(LOG_WARNING, "Radio log disabled (cannot load file).\n");
+	}
+
 	/* Register CLI command */
 	ast_cli_register_multiple(cli_alsaradio, sizeof(cli_alsaradio) / sizeof(struct ast_cli_entry));
 	return AST_MODULE_LOAD_SUCCESS;
+}
+
+/*
+ * Open log file
+ */
+static int 						load_log_file(void)
+{
+	ast_log(LOG_NOTICE, "Opening log file: %s\n", alsaradio_default.logfile_name);
+	if (!(alsaradio_default.logfile_p = fopen(alsaradio_default.logfile_name, "a")))
+	{
+		ast_log(LOG_ERROR, "Error when opening log file %s: %s\n",
+			alsaradio_default.logfile_name, strerror(errno));
+		return -1;
+	}
 }
 
 /*
@@ -2559,6 +2621,11 @@ static int 						unload_module(void)
 			ast_softhangup(o->owner, AST_SOFTHANGUP_APPUNLOAD);
 		if (o->owner)			/* XXX how ??? */
 			return -1;
+	}
+	if (!alsaradio_default.logfile_disable)
+	{
+		ast_log(LOG_NOTICE, "Close radio log file.\n");
+		fclose(alsaradio_default.logfile_p);
 	}
 	ao2_cleanup(alsaradio_tech.capabilities);
 	alsaradio_tech.capabilities = NULL;
