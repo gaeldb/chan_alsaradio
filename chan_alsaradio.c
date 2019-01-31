@@ -449,11 +449,11 @@ struct chan_alsaradio_pvt {
 	char 					serdevname[TEXT_SIZE];
 	int 					serdisable;
 	int 					serdev;
+	ast_mutex_t  			serdevlock;
 	struct termios			sertermsettings;
 	speed_t					serbaudrate;
 
 	char 					sercommandbuf[COMMAND_BUFFER_SIZE];
-	ast_mutex_t  			sercommandlock;
 
 	char					invertptt;
 	int 					pttkick[2];
@@ -729,15 +729,13 @@ static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
 		ast_str_set(&formated_command, 0, "%c%s%c", 0x02, cmd, 0x03);
 		if (o->debuglevel)
 			ast_verbose("[%s] send: %s\n", o->name, ast_str_buffer(formated_command));
+		ast_mutex_lock(&o->serdevlock);
 		if ((ret = write(o->serdev, ast_str_buffer(formated_command), ast_str_strlen(formated_command))) <= 0)
-		{
 	 		ast_log(LOG_ERROR, "Write error (return %i): %s\n", (int)ret, strerror(errno));
-	 		ast_free(formated_command);
-	 		return -42;
-		}
+	 	ast_mutex_unlock(&o->serdevlock);
 		ast_free(formated_command);
 	}
-	return RESULT_SUCCESS;
+	return (ret <= 0) ? RESULT_SUCCESS : 42;
 }
 
 /*
@@ -2067,7 +2065,6 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 		}
 	}
 	ast_mutex_init(&o->txqlock);
-	ast_mutex_init(&o->sercommandlock);
 	strcpy(o->mohinterpret, "default");
 	/* fill other fields from configuration */
 	for (v = ast_variable_browse(cfg, ctg); v; v = v->next) {
@@ -2503,7 +2500,8 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
     o->stopser = 0;
 	time(&o->lastsertime);
 
-	/* Run serial thread for this device */
+	/* Run serial thread for this device after protecting write access */
+	ast_mutex_init(&o->serdevlock);
 	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
 
 	/* Run hardware monitor taskprocessor */
@@ -2520,18 +2518,18 @@ static void 		serial_uninit(struct chan_alsaradio_pvt *o)
 {
 	if (o->serdisable || o->serdev <= 0)
 	{
-		ast_log(LOG_NOTICE, "Serial device %s %s\n",
-			o->serdevname,
+		ast_log(LOG_NOTICE, "Serial device %s %s\n", o->serdevname,
 			o->serdisable ? "was disabled" : "was already closed...");
 		return;
 	}
 	o->stopser = 1;
 	pthread_join(o->serthread, NULL);
 	pthread_join(o->hardware_monitor_thread, NULL);
+	ast_mutex_destroy(&o->txqlock);
+	ast_mutex_destroy(&o->serdevlock);
 	close(o->serdev);
 	o->serdev = -1;
-	ast_log(LOG_NOTICE, "[%s] serial device %s closed\n", o->name,
-			o->serdevname);
+	ast_log(LOG_NOTICE, "[%s] serial device %s closed\n", o->name, o->serdevname);
 	return;
 }
 
