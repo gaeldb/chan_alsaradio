@@ -460,7 +460,7 @@ struct chan_alsaradio_pvt {
 	int 					stopser;
 	int 					stopwrite;
 
-	/* Command INFO stuff */
+	/* Command INFO and MCH stuff */
 	char 					inforev[TEXT_SIZE];
 	char 					infodrev[TEXT_SIZE];
 	char 					infofrev[TEXT_SIZE];
@@ -469,6 +469,9 @@ struct chan_alsaradio_pvt {
 	char                    dpmridtype[TEXT_SIZE];
 	char                    dpmridsrc[TEXT_SIZE];
 	char                    dpmriddest[TEXT_SIZE];
+	unsigned short 			mch_absolute;
+	unsigned short 			mch_relative;
+	unsigned short 			mch_zone;
 
 	/* Syslogger stuff */
 	FILE 					*logfile_p;
@@ -691,6 +694,7 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 		send_command(o, "*GET,INFO,COMMENT,1");
 		send_command(o, "*GET,INFO,ESN");
 		send_command(o, "*GET,DPMR,SENDID");
+		send_command(o, "*GET,MCH,SEL,");
 	}
 	return RESULT_SUCCESS;
 }
@@ -1001,6 +1005,15 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 				strcpy(o->dpmridtype, strsep(&cmd_options, ","));
 				strcpy(o->dpmriddest, strsep(&cmd_options, ","));
 				strcpy(o->dpmridsrc, cmd_options);
+			}	
+		}
+		else if (!strcmp(cmd_category, "MCH"))
+		{
+			if (!strcmp(cmd_function, "SEL"))
+			{
+				strcpy(o->mch_absolute, strsep(&cmd_options, ","));
+				strcpy(o->mch_relative, strsep(&cmd_options, ","));
+				strcpy(o->mch_zone, cmd_options);
 			}	
 		}
 	}
@@ -1764,6 +1777,8 @@ static int 						radio_param(int fd, int argc, const char *const *argv)
 		ast_cli(fd, "DPMR ID type: \t\t%s\n", o->dpmridtype);
 		ast_cli(fd, "DPMR ID src: \t\t%s\n", o->dpmridsrc);
 		ast_cli(fd, "DPMR ID dest: \t\t%s\n", o->dpmriddest);
+		ast_cli(fd, "MCH absolute: \t\t%u\n", o->mch_absolute);
+		ast_cli(fd, "MCH relative: \t\t%u on zone %u\n", o->mch_relative, o->mch_zone);
 	}
 	return RESULT_SUCCESS;
 }
