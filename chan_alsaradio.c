@@ -99,8 +99,12 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #define ALSA_INDEV						"default"
 #define ALSA_OUTDEV						"default"
 #define DESIRED_RATE					8000
+
+#define HARDWARE_MONITOR_LOOP_TIME		30
+
 #define SERIAL_DEV						"/dev/ttyS0"
 #define SERIAL_BAUDRATE					B9600
+
 #define FRAME_SIZE 						160 /* Lets use 160 sample frames, just like GSM.  */
 #define PERIOD_FRAMES 					80	/* 80 Frames, at 2 bytes each */
 
@@ -470,6 +474,11 @@ struct chan_alsaradio_pvt {
 	FILE 					*logfile_p;
 	char 					logfile_name[TEXT_SIZE];
 	char 					logfile_disable;
+
+	/* Hardware monitor taskprocessor */
+	pthread_t 				hardware_monitor_thread;
+	unsigned int 			hardware_monitor_loop_t;
+
 };
 
 static struct chan_alsaradio_pvt 
@@ -504,7 +513,10 @@ static struct chan_alsaradio_pvt
 
 	/* logger stuff */
 	.logfile_name = LOGFILE_NAME,
-	.logfile_disable = 0
+	.logfile_disable = 0;
+
+	/* monitor taskprocessor */
+	hardware_monitor_loop_t = HARDWARE_MONITOR_LOOP_TIME
 };
 
 /* the active device */
@@ -526,15 +538,18 @@ static int 					alsaradio_indicate(struct ast_channel *chan, int cond, const voi
 static int 					alsaradio_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
 static int 					alsaradio_setoption(struct ast_channel *chan, int option, void *data, int datalen);
 static int 					setformat(struct chan_alsaradio_pvt *o, int mode);
+
 static snd_pcm_t 			*alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pcm_stream_t stream);
 static void 				alsa_card_uninit(struct chan_alsaradio_pvt *o);
 static int					alsa_write(struct chan_alsaradio_pvt *o, struct ast_frame *f);
 static struct ast_frame 	*alsa_read(struct chan_alsaradio_pvt *o);
+
 static int 					serial_init(struct chan_alsaradio_pvt *o);
 static void 				serial_uninit(struct chan_alsaradio_pvt *o);
 //static int 					serial_getcor(struct chan_alsaradio_pvt *o);
 //static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
 static int 					serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
+static int					send_hardware_request(struct chan_alsaradio_pvt *o);
 static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
 static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
@@ -681,6 +696,25 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 }
 
 /*
+ * Request CTRL harware request to the radio
+ */
+static int						send_hardware_request(struct chan_alsaradio_pvt *o)
+{
+	if (o)
+	{
+		send_command(o, "*GET,CTRL,BATV");
+		send_command(o, "*GET,CTRL,BATVST");
+		send_command(o, "*GET,CTRL,NMEA,dPMR STD");
+		send_command(o, "*GET,CTRL,TEMP");
+		send_command(o, "*GET,CTRL,TEMPST");
+		send_command(o, "*GET,CTRL,FANST");
+		send_command(o, "*GET,CTRL,TEMPEX");
+		send_command(o, "*GET,CTRL,TEMPEXST");
+	}
+	return RESULT_SUCCESS;
+}
+
+/*
  * Write in command pipe
  */
 static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
@@ -726,6 +760,24 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 	if (o->debuglevel)
 		ast_verbose("Found device %s at <%p>\n", dev, o);
 	return o;
+}
+
+/*
+ * Hardware monitor taskprocessor thread 
+ */
+static void 					*hardware_monitor_thread(void *arg)
+{
+	struct chan_alsaradio_pvt 	*o = (struct chan_alsaradio_pvt *) arg;
+
+	ast_log(LOG_NOTICE, "[%s] monitoring normally\n", o->name);
+	while (42)
+	{
+		if (o->debuglevel)
+			ast_verbose("[%s] Sending hardware monitoring requests (next in %d sec.)\n", o->name, o->hardware_monitor_loop_t);
+		send_hardware_request(o);
+		sleep(o->hardware_monitor_loop_t);
+	}
+    pthread_exit(NULL);
 }
 
 /*
@@ -2454,6 +2506,9 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 	/* Run serial thread for this device */
 	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
 
+	/* Run hardware monitor taskprocessor */
+	ast_pthread_create_background(&o->hardware_monitor_thread, NULL, hardware_monitor_thread, o);
+
 	/* Prepare radio to oprationnal condition on get basic info */
 	send_info_request(o);
 	send_command(o, "*SET,UI,TEXT,Airlink");
@@ -2472,6 +2527,7 @@ static void 		serial_uninit(struct chan_alsaradio_pvt *o)
 	}
 	o->stopser = 1;
 	pthread_join(o->serthread, NULL);
+	pthread_join(o->hardware_monitor_thread, NULL);
 	close(o->serdev);
 	o->serdev = -1;
 	ast_log(LOG_NOTICE, "[%s] serial device %s closed\n", o->name,
