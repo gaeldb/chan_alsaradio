@@ -105,6 +105,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #define SERIAL_DEV						"/dev/ttyS0"
 #define SERIAL_BAUDRATE					B9600
 
+#define LOGFILE_NAME 					"/var/log/asterisk/radio.log"
+
 #define FRAME_SIZE 						160 /* Lets use 160 sample frames, just like GSM.  */
 #define PERIOD_FRAMES 					80	/* 80 Frames, at 2 bytes each */
 
@@ -516,10 +518,10 @@ static struct chan_alsaradio_pvt
 
 	/* logger stuff */
 	.logfile_name = LOGFILE_NAME,
-	.logfile_disable = 0;
+	.logfile_disable = 0,
 
 	/* monitor taskprocessor */
-	hardware_monitor_loop_t = HARDWARE_MONITOR_LOOP_TIME
+	.hardware_monitor_loop_t = HARDWARE_MONITOR_LOOP_TIME
 };
 
 /* the active device */
@@ -694,7 +696,7 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 		send_command(o, "*GET,INFO,COMMENT,1");
 		send_command(o, "*GET,INFO,ESN");
 		send_command(o, "*GET,DPMR,SENDID");
-		send_command(o, "*GET,MCH,SEL,");
+		send_command(o, "*GET,MCH,SEL");
 	}
 	return RESULT_SUCCESS;
 }
@@ -723,10 +725,10 @@ static int						send_hardware_request(struct chan_alsaradio_pvt *o)
  */
 static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
 {
-	// need to wait FD o->serdev to be free with a mutex... ?!!!
 	struct ast_str 				*formated_command;
 	int 						ret;
 
+	ret = 0;
 	if (o && cmd)
 	{
 		formated_command = ast_str_create(strlen(cmd) + 3);
@@ -1007,15 +1009,16 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 				strcpy(o->dpmridsrc, cmd_options);
 			}	
 		}
-		else if (!strcmp(cmd_category, "MCH"))
-		{
-			if (!strcmp(cmd_function, "SEL"))
-			{
-				strcpy(o->mch_absolute, strsep(&cmd_options, ","));
-				strcpy(o->mch_relative, strsep(&cmd_options, ","));
-				strcpy(o->mch_zone, cmd_options);
-			}	
-		}
+		// ca ca segfault à priori
+		// else if (!strcmp(cmd_category, "MCH"))
+		// {
+		// 	if (!strcmp(cmd_function, "SEL"))
+		// 	{
+		// 		o->mch_absolute = atoi(strsep(&cmd_options, ","));
+		// 		o->mch_relative = atoi(strsep(&cmd_options, ","));
+		// 		o->mch_zone = atoi(cmd_options);
+		// 	}	
+		// }
 	}
 	return 1;
 }
@@ -1045,8 +1048,6 @@ static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 	fflush(alsaradio_default.logfile_p);   
 	ast_free(line);
 	return 0;
-
-
 }
 
 /*
@@ -2520,7 +2521,7 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
 
 	/* Run hardware monitor taskprocessor */
-	ast_pthread_create_background(&o->hardware_monitor_thread, NULL, hardware_monitor_thread, o);
+	//ast_pthread_create_background(&o->hardware_monitor_thread, NULL, hardware_monitor_thread, o);
 
 	/* Prepare radio to oprationnal condition on get basic info */
 	send_info_request(o);
