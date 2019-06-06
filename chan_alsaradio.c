@@ -710,7 +710,7 @@ static int						send_hardware_request(struct chan_alsaradio_pvt *o)
 	{
 		send_command(o, "*GET,CTRL,BATV");
 		send_command(o, "*GET,CTRL,BATVST");
-		send_command(o, "*GET,CTRL,NMEA,dPMR STD");
+		//send_command(o, "*GET,CTRL,NMEA,dPMR STD");
 		send_command(o, "*GET,CTRL,TEMP");
 		send_command(o, "*GET,CTRL,TEMPST");
 		send_command(o, "*GET,CTRL,FANST");
@@ -741,7 +741,7 @@ static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
 	 	ast_mutex_unlock(&o->serdevlock);
 		ast_free(formated_command);
 	}
-	return (ret <= 0) ? RESULT_SUCCESS : 42;
+	return (ret <= 0) ? -1 : RESULT_SUCCESS;
 }
 
 /*
@@ -1732,6 +1732,9 @@ static int 						console_unkey(int fd, int argc, const char *const *argv)
 	return RESULT_SUCCESS;
 }
 
+/*
+ * Send a command (argv[2]) to the radio via send_command()
+ */
 static int 						console_command(int fd, int argc, const char *const *argv)
 {
 	struct chan_alsaradio_pvt 	*o;
@@ -2524,7 +2527,7 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 	//ast_pthread_create_background(&o->hardware_monitor_thread, NULL, hardware_monitor_thread, o);
 
 	/* Prepare radio to oprationnal condition on get basic info */
-	send_info_request(o);
+	//send_info_request(o);
 	send_command(o, "*SET,UI,TEXT,Airlink");
 
 	return (0);
