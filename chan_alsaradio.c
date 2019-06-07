@@ -99,8 +99,14 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #define ALSA_INDEV						"default"
 #define ALSA_OUTDEV						"default"
 #define DESIRED_RATE					8000
+
+#define HARDWARE_MONITOR_LOOP_TIME		60
+
 #define SERIAL_DEV						"/dev/ttyS0"
 #define SERIAL_BAUDRATE					B9600
+
+#define LOGFILE_NAME 					"/var/log/asterisk/radio.log"
+
 #define FRAME_SIZE 						160 /* Lets use 160 sample frames, just like GSM.  */
 #define PERIOD_FRAMES 					80	/* 80 Frames, at 2 bytes each */
 
@@ -445,18 +451,18 @@ struct chan_alsaradio_pvt {
 	char 					serdevname[TEXT_SIZE];
 	int 					serdisable;
 	int 					serdev;
+	ast_mutex_t  			serdevlock;
 	struct termios			sertermsettings;
 	speed_t					serbaudrate;
 
 	char 					sercommandbuf[COMMAND_BUFFER_SIZE];
-	ast_mutex_t  			sercommandlock;
 
 	char					invertptt;
 	int 					pttkick[2];
 	int 					stopser;
 	int 					stopwrite;
 
-	/* Command INFO stuff */
+	/* Command INFO and MCH stuff */
 	char 					inforev[TEXT_SIZE];
 	char 					infodrev[TEXT_SIZE];
 	char 					infofrev[TEXT_SIZE];
@@ -465,11 +471,19 @@ struct chan_alsaradio_pvt {
 	char                    dpmridtype[TEXT_SIZE];
 	char                    dpmridsrc[TEXT_SIZE];
 	char                    dpmriddest[TEXT_SIZE];
+	unsigned short 			mch_absolute;
+	unsigned short 			mch_relative;
+	unsigned short 			mch_zone;
 
 	/* Syslogger stuff */
 	FILE 					*logfile_p;
 	char 					logfile_name[TEXT_SIZE];
 	char 					logfile_disable;
+
+	/* Hardware monitor taskprocessor */
+	pthread_t 				hardware_monitor_thread;
+	unsigned int 			hardware_monitor_loop_t;
+
 };
 
 static struct chan_alsaradio_pvt 
@@ -504,7 +518,10 @@ static struct chan_alsaradio_pvt
 
 	/* logger stuff */
 	.logfile_name = LOGFILE_NAME,
-	.logfile_disable = 0
+	.logfile_disable = 0,
+
+	/* monitor taskprocessor */
+	.hardware_monitor_loop_t = HARDWARE_MONITOR_LOOP_TIME
 };
 
 /* the active device */
@@ -526,15 +543,18 @@ static int 					alsaradio_indicate(struct ast_channel *chan, int cond, const voi
 static int 					alsaradio_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
 static int 					alsaradio_setoption(struct ast_channel *chan, int option, void *data, int datalen);
 static int 					setformat(struct chan_alsaradio_pvt *o, int mode);
+
 static snd_pcm_t 			*alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pcm_stream_t stream);
 static void 				alsa_card_uninit(struct chan_alsaradio_pvt *o);
 static int					alsa_write(struct chan_alsaradio_pvt *o, struct ast_frame *f);
 static struct ast_frame 	*alsa_read(struct chan_alsaradio_pvt *o);
+
 static int 					serial_init(struct chan_alsaradio_pvt *o);
 static void 				serial_uninit(struct chan_alsaradio_pvt *o);
 //static int 					serial_getcor(struct chan_alsaradio_pvt *o);
 //static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
 static int 					serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
+static int					send_hardware_request(struct chan_alsaradio_pvt *o);
 static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
 static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
@@ -676,7 +696,28 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 		send_command(o, "*GET,INFO,COMMENT,1");
 		send_command(o, "*GET,INFO,ESN");
 		send_command(o, "*GET,DPMR,SENDID");
+		send_command(o, "*GET,MCH,SEL");
 	}
+	return RESULT_SUCCESS;
+}
+
+/*
+ * Request CTRL harware request to the radio
+ */
+static int						send_hardware_request(struct chan_alsaradio_pvt *o)
+{
+	// KO depuis cust o ?
+	// if (o)
+	// {
+	// 	send_command(o, "*GET,CTRL,BATV");
+	// 	send_command(o, "*GET,CTRL,BATVST");
+	// 	send_command(o, "*GET,CTRL,NMEA,dPMR STD");
+	// 	send_command(o, "*GET,CTRL,TEMP");
+	// 	send_command(o, "*GET,CTRL,TEMPST");
+	// 	send_command(o, "*GET,CTRL,FANST");
+	// 	send_command(o, "*GET,CTRL,TEMPEX");
+	// 	send_command(o, "*GET,CTRL,TEMPEXST");
+	// }
 	return RESULT_SUCCESS;
 }
 
@@ -685,25 +726,23 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
  */
 static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
 {
-	// need to wait FD o->serdev to be free with a mutex... ?!!!
 	struct ast_str 				*formated_command;
 	int 						ret;
 
+	ret = 0;
 	if (o && cmd)
 	{
 		formated_command = ast_str_create(strlen(cmd) + 3);
 		ast_str_set(&formated_command, 0, "%c%s%c", 0x02, cmd, 0x03);
-		if (o->debuglevel)
+		//if (o->debuglevel)
 			ast_verbose("[%s] send: %s\n", o->name, ast_str_buffer(formated_command));
+		ast_mutex_lock(&o->serdevlock);
 		if ((ret = write(o->serdev, ast_str_buffer(formated_command), ast_str_strlen(formated_command))) <= 0)
-		{
 	 		ast_log(LOG_ERROR, "Write error (return %i): %s\n", (int)ret, strerror(errno));
-	 		ast_free(formated_command);
-	 		return -42;
-		}
+	 	ast_mutex_unlock(&o->serdevlock);
 		ast_free(formated_command);
 	}
-	return RESULT_SUCCESS;
+	return (ret <= 0) ? -1 : RESULT_SUCCESS;
 }
 
 /*
@@ -726,6 +765,24 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 	if (o->debuglevel)
 		ast_verbose("Found device %s at <%p>\n", dev, o);
 	return o;
+}
+
+/*
+ * Hardware monitor taskprocessor thread 
+ */
+static void 					*hardware_monitor_thread(void *arg)
+{
+	struct chan_alsaradio_pvt 	*o = (struct chan_alsaradio_pvt *) arg;
+
+	ast_log(LOG_NOTICE, "[%s] monitoring normally\n", o->name);
+	while (42)
+	{
+		if (o->debuglevel)
+			ast_verbose("[%s] Sending hardware monitoring requests (next in %d sec.)\n", o->name, o->hardware_monitor_loop_t);
+		send_hardware_request(o);
+		sleep(o->hardware_monitor_loop_t);
+	}
+    pthread_exit(NULL);
 }
 
 /*
@@ -834,36 +891,38 @@ static void 					*serthread(void *arg)
 					{
 						if (read(o->serdev, &c, 1) < 0)
 							ast_log(LOG_ERROR, "Error in read.\n");
-						// 0x02 = STX
-						if (c == 0x02)
+						// 0x03 = ETX or buffer overflow
+						if (i >= 255 || c == 0x03 )
 						{
-							strncpy(&(o->sercommandbuf[i]), "[STX]", 5);
-							i += 5;
-						}
-						// 0x03 = ETX
-						else if (c == 0x03)
-						{
-							strncpy(&(o->sercommandbuf[i]), "[ETX]\0", 6);
-							i += 6;
+							o->sercommandbuf[i] = '\0';
+							i++;
 							break;
 						}
-						// '\n' and '\r'
-						else if (c == 0x0a || c == 0x0d)
-						{
-							strncpy(&(o->sercommandbuf[i]), c == 0x0a ? "[0x0a]" : "[0x0d]", 6);
-							i += 6;
-						}
+						// // 0x03 = ETX
+						// else if (c == 0x03)
+						// {
+						// 	//strncpy(&(o->sercommandbuf[i]), "[ETX]\0", 6);
+						// 	//i += 6;
+						// 	break;
+						// }
+						// // '\n' and '\r'
+						// else if (c == 0x0a || c == 0x0d)
+						// {
+						// 	//strncpy(&(o->sercommandbuf[i]), c == 0x0a ? "[0x0a]" : "[0x0d]", 6);
+						// 	//i += 6;
+						// 	break;
+						// }
 						// Printable charaters
-						else if (c >= 0x20) // This is a printable character
+						if (c >= 0x20 && c < 0x7f) // This is a printable character
 						{
 							o->sercommandbuf[i] = c;
 							i++;
 						}
 					}
 					if (o->debuglevel)
-						ast_verbose("[%s] %s\n", o->name, o->sercommandbuf);
-					if (!alsaradio_default.logfile_disable)
-						log_pccmdv2_command(o, o->sercommandbuf);
+						ast_verbose("[%s] recv: %s\n", o->name, o->sercommandbuf);
+					//if (!alsaradio_default.logfile_disable)
+					//	log_pccmdv2_command(o, o->sercommandbuf);
 					parse_pccmdv2_command(o, o->sercommandbuf);
 				}
 			}
@@ -923,12 +982,21 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 	char 					*cmd_function;
 	char 					*cmd_options;
 
-	/* To remove the '*' at the beginning */
-	buf = cmd + 1;
+	if (o->debuglevel)
+		ast_verbose("-- Start parsing PCCMDV2 --\nPCCMDV2 LINE = %s\n", cmd);
+	if (cmd[0] == '*') /* To remove the '*' at the beginning of line */
+		buf = cmd + 1;
+	else
+		buf = cmd;
 	cmd_type = strsep(&buf, ",");
 	cmd_category = strsep(&buf, ",");
 	cmd_function = strsep(&buf, ",");
 	cmd_options = buf;
+
+	if (o->debuglevel)
+		ast_verbose("TYPE = %s\nCAT = %s\nFNC = %s\nOPT = %s\n",
+			cmd_type, cmd_category, cmd_function, cmd_options);
+
 	if (!strcmp(cmd_type, "NTF"))
 	{
 		if (!strcmp(cmd_category, "INFO"))
@@ -953,7 +1021,26 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 				strcpy(o->dpmridsrc, cmd_options);
 			}	
 		}
+		else if (!strcmp(cmd_category, "MCH"))
+		{
+			if (!strcmp(cmd_function, "SEL"))
+			{
+				//We have here an different behavior than expect protocol:
+				//we never receive bank and absolution channel
+				//o->mch_absolute = atoi(strsep(&cmd_options, ","));
+				//o->mch_relative = atoi(strsep(&cmd_options, ","));
+				o->mch_absolute = atoi(cmd_options);
+			}
+		}
+		else
+			if (o->debuglevel)
+				ast_log(LOG_WARNING, "Recieve an unknown command category.\n");
 	}
+	else
+		if (o->debuglevel)
+			ast_log(LOG_WARNING, "Recieve an unknown command type.\n");
+	if (o->debuglevel)
+		ast_verbose("-- End of parsing --\n");
 	return 1;
 }
 
@@ -982,8 +1069,6 @@ static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 	fflush(alsaradio_default.logfile_p);   
 	ast_free(line);
 	return 0;
-
-
 }
 
 /*
@@ -1668,6 +1753,9 @@ static int 						console_unkey(int fd, int argc, const char *const *argv)
 	return RESULT_SUCCESS;
 }
 
+/*
+ * Send a command (argv[2]) to the radio via send_command()
+ */
 static int 						console_command(int fd, int argc, const char *const *argv)
 {
 	struct chan_alsaradio_pvt 	*o;
@@ -1714,6 +1802,8 @@ static int 						radio_param(int fd, int argc, const char *const *argv)
 		ast_cli(fd, "DPMR ID type: \t\t%s\n", o->dpmridtype);
 		ast_cli(fd, "DPMR ID src: \t\t%s\n", o->dpmridsrc);
 		ast_cli(fd, "DPMR ID dest: \t\t%s\n", o->dpmriddest);
+		ast_cli(fd, "MCH absolute: \t\t%u\n", o->mch_absolute);
+		//ast_cli(fd, "MCH relative: \t\t%u on zone %u\n", o->mch_relative, o->mch_zone);
 	}
 	return RESULT_SUCCESS;
 }
@@ -2015,7 +2105,6 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 		}
 	}
 	ast_mutex_init(&o->txqlock);
-	ast_mutex_init(&o->sercommandlock);
 	strcpy(o->mohinterpret, "default");
 	/* fill other fields from configuration */
 	for (v = ast_variable_browse(cfg, ctg); v; v = v->next) {
@@ -2451,8 +2540,12 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
     o->stopser = 0;
 	time(&o->lastsertime);
 
-	/* Run serial thread for this device */
+	/* Run serial thread for this device after protecting write access */
+	ast_mutex_init(&o->serdevlock);
 	ast_pthread_create_background(&o->serthread, NULL, serthread, o);
+
+	/* Run hardware monitor taskprocessor */
+	ast_pthread_create_background(&o->hardware_monitor_thread, NULL, hardware_monitor_thread, o);
 
 	/* Prepare radio to oprationnal condition on get basic info */
 	send_info_request(o);
@@ -2465,17 +2558,18 @@ static void 		serial_uninit(struct chan_alsaradio_pvt *o)
 {
 	if (o->serdisable || o->serdev <= 0)
 	{
-		ast_log(LOG_NOTICE, "Serial device %s %s\n",
-			o->serdevname,
+		ast_log(LOG_NOTICE, "Serial device %s %s\n", o->serdevname,
 			o->serdisable ? "was disabled" : "was already closed...");
 		return;
 	}
 	o->stopser = 1;
 	pthread_join(o->serthread, NULL);
+	pthread_join(o->hardware_monitor_thread, NULL);
+	ast_mutex_destroy(&o->txqlock);
+	ast_mutex_destroy(&o->serdevlock);
 	close(o->serdev);
 	o->serdev = -1;
-	ast_log(LOG_NOTICE, "[%s] serial device %s closed\n", o->name,
-			o->serdevname);
+	ast_log(LOG_NOTICE, "[%s] serial device %s closed\n", o->name, o->serdevname);
 	return;
 }
 
