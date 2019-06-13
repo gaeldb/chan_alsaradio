@@ -1867,6 +1867,19 @@ static int 						radio_param(int fd, int argc, const char *const *argv)
 	return RESULT_SUCCESS;
 }
 
+/*
+ * Print or reload inventory
+ */
+static int 						console_inventory(int fd, int argc, const char *const *argv)
+{
+	if (argc == 3 && !strcasecmp(argv[2],"reload"))
+		if (load_inventory() < 0)
+			ast_log(LOG_NOTICE, "Inventory file not loaded\n");
+	ast_cli(fd, "Stunnable radio: %s\n", alsaradio_default.inventorystun);
+	ast_cli(fd, "This radio need info: %s\n", alsaradio_default.inventoryinfo);
+	return RESULT_SUCCESS;
+}
+
 // static int 						console_rkey(int fd, int argc, const char *const *argv)
 // {
 // 	sim_cor = 1;
@@ -2028,6 +2041,10 @@ static char reset_usage[] =
 static char debug_usage[] =
 	"Usage: aradio debug [off]\n"
 	"       Enable or disable debug level logging mode.\n";
+
+static char inventory_usage[] =
+	"Usage: aradio inventory [reload]\n"
+	"       Print or reload inventory (for stun, kill or info).\n";
 
 static char param_usage[] =
 	"Usage: aradio param\n"
@@ -2300,6 +2317,20 @@ static char *handle_aradio_param(struct ast_cli_entry *e,
 	return res2cli(radio_param(a->fd,a->argc,a->argv));
 }
 
+static char *handle_aradio_inventory(struct ast_cli_entry *e,
+	int cmd, struct ast_cli_args *a)
+{
+        switch (cmd) {
+        case CLI_INIT:
+                e->command = "aradio inventory";
+                e->usage = inventory_usage;
+                return NULL;
+        case CLI_GENERATE:
+                return NULL;
+	}
+	return res2cli(console_inventory(a->fd,a->argc,a->argv));
+}
+
 // We do not use it... (COR ?)
 // static char *handle_console_runkey(struct ast_cli_entry *e,
 // 	int cmd, struct ast_cli_args *a)
@@ -2396,6 +2427,7 @@ static struct ast_cli_entry cli_alsaradio[] = {
 	//AST_CLI_DEFINE(handle_aradio_tune,"aradio Tune"),
 	AST_CLI_DEFINE(handle_aradio_debug,"aradio Debug On"),
 	AST_CLI_DEFINE(handle_aradio_debug_off,"aradio Debug Off"),
+	AST_CLI_DEFINE(handle_aradio_inventory,"Radio inventory"),
 	AST_CLI_DEFINE(handle_aradio_active,"Change commanded device")
 };
 
