@@ -2195,7 +2195,6 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			o = &alsaradio_default;
 		else 
 		{
-		    ast_log(LOG_NOTICE,"ast_calloc for chan_alsaradio_pvt of %s\n", ctg);
 			if (!(o = ast_calloc(1, sizeof(*o))))
 				return NULL;
 			*o = alsaradio_default;
@@ -2787,10 +2786,7 @@ static int 						load_module(void)
 		return AST_MODULE_LOAD_DECLINE;
 	}
 	while ((ctg = ast_category_browse(cfg, ctg)) != NULL)
-	{
-		ast_log(LOG_NOTICE, "Find config for radio %s\n", ctg);
 		store_config(cfg, ctg);
-	}
 	ast_config_destroy(cfg);
 
 	if (ast_channel_register(&alsaradio_tech)) {
@@ -2799,8 +2795,7 @@ static int 						load_module(void)
 	}
 
 	/* Load inventory file */
-	if (load_inventory() < 0)
-		ast_log(LOG_NOTICE, "Inventory file not loaded\n");
+	(void)load_inventory()
 
 	/* Run into radio structs and initialize serial ports */
 	for (o = alsaradio_default.next; o; o = o->next)
