@@ -302,7 +302,8 @@ END_CONFIG
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #endif
 
-static char *config = "alsaradio.conf";			/* default config file */
+static char *config = "alsaradio.conf";					/* default config file */
+static char *inventory = "alsaradio_inventory.conf";	/* inventory file */
 //static char *config1 = "alsaradio_tune_%s.conf";	/* tune config file */
 
 static FILE *frxcapraw = NULL;
@@ -501,6 +502,11 @@ struct chan_alsaradio_pvt {
 	pthread_t 				hardware_monitor_thread;
 	unsigned int 			hardware_monitor_loop_t;
 
+	/* Inventory lists */
+	char 					inhibit;
+	char 					*inventorystun;
+	char 					*inventoryinfo;
+
 };
 
 /* A PCCMDV2 command structure */
@@ -546,11 +552,15 @@ static struct chan_alsaradio_pvt
 	.logfile_disable = 0,
 
 	/* monitor taskprocessor */
-	.hardware_monitor_loop_t = HARDWARE_MONITOR_LOOP_TIME
+	.hardware_monitor_loop_t = HARDWARE_MONITOR_LOOP_TIME,
+
+	/* inventory lists */
+	.inventorystun = NULL
 };
 
 /* the active device */
 static char 				*alsaradio_active;
+
 
 /*	DECLARE FUNCTION PROTOTYPES	*/
 //static void 				mixer_write(struct chan_alsaradio_pvt *o);
@@ -584,6 +594,7 @@ static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
 static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					load_log_file(void);
+static int 					load_inventory(void);
 
 static struct ast_channel_tech
 							alsaradio_tech = {
@@ -2731,6 +2742,10 @@ static int 						load_module(void)
 		return AST_MODULE_LOAD_FAILURE;
 	}
 
+	/* Load inventory file */
+	if (load_inventory() < 0)
+		ast_log(LOG_NOTICE, "Inventory file not loaded\n");
+
 	/* Run into radio structs and initialize serial ports */
 	for (o = alsaradio_default.next; o; o = o->next)
 		if (serial_init(o) >= 0)
@@ -2741,6 +2756,49 @@ static int 						load_module(void)
 	/* Register CLI command */
 	ast_cli_register_multiple(cli_alsaradio, sizeof(cli_alsaradio) / sizeof(struct ast_cli_entry));
 	return AST_MODULE_LOAD_SUCCESS;
+}
+
+/*
+ * Load inventory file
+ */
+static int 						load_inventory(void)
+{
+	struct ast_config 			*cfg = NULL;
+	char 						*ctg = NULL;
+	struct ast_flags 			zeroflag = {0};
+	struct ast_variable 		*v;
+
+	/* load config file */
+	if (!(cfg = ast_config_load(inventory, zeroflag)))
+	{
+		ast_log(LOG_WARNING, "Unable to open inventory file %s\n", config);
+		return -1;
+	}
+
+	/* clean data inventory variable if they already exist */
+	if (alsaradio_default.inventorystun)
+		ast_free(alsaradio_default.inventorystun);
+	if (alsaradio_default.inventoryinfo)
+		ast_free(alsaradio_default.inventoryinfo);
+
+	/* Parse inventory file */
+	while ((ctg = ast_category_browse(cfg, ctg)) != NULL)
+	{
+		if (!strcmp(ctg, "inventory"))
+		{
+			for (v = ast_variable_browse(cfg, ctg); v; v = v->next)
+			{
+				M_START((char *)v->name, (char *)v->value);
+				M_BOOL("inhibit", alsaradio_default.inhibit)
+				M_F("stun", alsaradio_default.inventorystun = ast_strdup((char *)v->value))
+				M_F("info", alsaradio_default.inventoryinfo = ast_strdup((char *)v->value))
+				M_END(;
+				);
+			}
+		}
+	}
+	ast_config_destroy(cfg);
+	return 0;
 }
 
 /*
@@ -2779,6 +2837,8 @@ static int 						unload_module(void)
 		if (o->owner)			/* XXX how ??? */
 			return -1;
 	}
+	ast_free(alsaradio_default.inventorystun);
+	ast_free(alsaradio_default.inventoryinfo);
 	ao2_cleanup(alsaradio_tech.capabilities);
 	alsaradio_tech.capabilities = NULL;
 	ast_log(LOG_NOTICE, "Module unloaded\n");
