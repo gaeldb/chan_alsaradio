@@ -993,6 +993,23 @@ static void 					*serthread(void *arg)
 }
 
 /*
+ * Check if this radio is inventoried and do needed action
+ */
+
+static int 					check_inventory(struct chan_alsaradio_pvt *o, char *id)
+{
+	char 					formated_command[TEXT_SIZE];
+
+	if (strstr(alsaradio_default.inventorystun, id))
+	{
+		ast_verbose("  -- " ANSI_COLOR_RED "/!\\ Find illegal radio %s, stun it now !" ANSI_COLOR_RESET "\n", id);
+		snprintf(formated_command, TEXT_SIZE - 1, "*SET,DPMR,TXSTUN,IND,%s,0099890", id);
+		send_command(o, formated_command);
+	}
+	return RESULT_SUCCESS;
+}
+
+/*
  * Receive a DPMR action (NTF,DPMR or CTRL,DBUSY)
  */
 static int 					action_dpmr(struct chan_alsaradio_pvt *o, PCCMDV2_FRAME *line)
@@ -1038,6 +1055,7 @@ static int 					action_dpmr(struct chan_alsaradio_pvt *o, PCCMDV2_FRAME *line)
 		ast_verbose("  -- %s from %s to %s:%s with RSSI:%s/%idBm and CC:%i\n",
 					line->cmd_function, o->rxidsrc, o->rxidtype,
 					o->rxiddest, o->rxrssilevel, o->rxrssidbm, o->rxcc);
+		(void)check_inventory(o, o->rxidsrc);
 	}
 	return 0;
 }
