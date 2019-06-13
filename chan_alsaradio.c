@@ -95,6 +95,15 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include 								"asterisk/format_cache.h"
 #include 								"asterisk/stasis_channels.h"
 
+/* ANSI colors */
+#define ANSI_COLOR_RED     				"\x1b[31m"
+#define ANSI_COLOR_GREEN   				"\x1b[32m"
+#define ANSI_COLOR_YELLOW  				"\x1b[33m"
+#define ANSI_COLOR_BLUE    				"\x1b[34m"
+#define ANSI_COLOR_MAGENTA 				"\x1b[35m"
+#define ANSI_COLOR_CYAN    				"\x1b[36m"
+#define ANSI_COLOR_RESET   				"\x1b[0m"
+
 /* ALSA and serial stuff */
 #define ALSA_INDEV						"default"
 #define ALSA_OUTDEV						"default"
@@ -475,6 +484,14 @@ struct chan_alsaradio_pvt {
 	unsigned short 			mch_relative;
 	unsigned short 			mch_zone;
 
+	/* Last RX stuff */
+	char 					rxidtype[TEXT_SIZE];
+	char 					rxiddest[TEXT_SIZE];
+	char 					rxidsrc[TEXT_SIZE];
+	char 		 			rxrssilevel[TEXT_SIZE];
+	short 					rxrssidbm;
+	short 					rxcc;
+
 	/* Syslogger stuff */
 	FILE 					*logfile_p;
 	char 					logfile_name[TEXT_SIZE];
@@ -485,6 +502,14 @@ struct chan_alsaradio_pvt {
 	unsigned int 			hardware_monitor_loop_t;
 
 };
+
+/* A PCCMDV2 command structure */
+typedef struct pccmdv2 {
+	char 							*cmd_type;
+	char 							*cmd_category;
+	char 							*cmd_function;
+	char 							*cmd_options;
+} PCCMDV2_FRAME;
 
 static struct chan_alsaradio_pvt 
 							alsaradio_default = {
@@ -734,7 +759,7 @@ static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
 	{
 		formated_command = ast_str_create(strlen(cmd) + 3);
 		ast_str_set(&formated_command, 0, "%c%s%c", 0x02, cmd, 0x03);
-		//if (o->debuglevel)
+		if (o->debuglevel)
 			ast_verbose("[%s] send: %s\n", o->name, ast_str_buffer(formated_command));
 		ast_mutex_lock(&o->serdevlock);
 		if ((ret = write(o->serdev, ast_str_buffer(formated_command), ast_str_strlen(formated_command))) <= 0)
@@ -957,65 +982,104 @@ static void 					*serthread(void *arg)
 }
 
 /*
+ * Receive a DPMR action (NTF,DPMR or CTRL,DBUSY)
+ */
+static int 					action_dpmr(struct chan_alsaradio_pvt *o, PCCMDV2_FRAME *line)
+{
+	if (!strcmp(line->cmd_function, "DBUSY"))
+	{
+		if (!strcmp(line->cmd_options, "OFF"))
+			ast_verbose("== DPMR RX OFF\n");
+		else
+		{
+			strsep(&(line->cmd_options), ","); // clean ON option
+			strcpy(o->rxrssilevel, strsep(&(line->cmd_options), ","));
+			o->rxrssidbm = atoi(line->cmd_options);
+			ast_verbose("== " ANSI_COLOR_GREEN "DPMR RX ON (RSSI: %s %idBm)" ANSI_COLOR_RESET 
+						"\n", o->rxrssilevel, o->rxrssidbm);
+		}
+	}
+	else if (!strcmp(line->cmd_function, "SENDID"))
+	{
+		if (!strcmp(line->cmd_options, "NG"))
+			return 1;
+		strcpy(o->dpmridtype, strsep(&(line->cmd_options), ","));
+		strcpy(o->dpmriddest, strsep(&(line->cmd_options), ","));
+		strcpy(o->dpmridsrc, line->cmd_options);
+	}
+	else if (!strcmp(line->cmd_function, "RXCC"))
+	{
+		if (!strcmp("VALID", strsep(&(line->cmd_options), ",")))
+			o->rxcc = atoi(strsep(&(line->cmd_options), ","));
+	}
+	else if (!strcmp(line->cmd_function, "RXVCALL") ||
+			 !strcmp(line->cmd_function, "RXSTAT") ||
+			 !strcmp(line->cmd_function, "RXMSG") ||
+			 !strcmp(line->cmd_function, "RXCLEAR") ||
+			 !strcmp(line->cmd_function, "RXSETUP") ||
+			 !strcmp(line->cmd_function, "RXEMER"))
+	{
+		strcpy(o->rxidtype, strsep(&(line->cmd_options), ","));
+		strcpy(o->rxiddest, strsep(&(line->cmd_options), ","));
+		strcpy(o->rxidsrc, strsep(&(line->cmd_options), ","));
+		strcpy(o->rxrssilevel, strsep(&(line->cmd_options), ","));
+		o->rxrssidbm = atoi(strsep(&(line->cmd_options), ","));
+		ast_verbose("  -- %s from %s to %s:%s with RSSI:%s/%idBm and CC:%i\n",
+					line->cmd_function, o->rxidsrc, o->rxidtype,
+					o->rxiddest, o->rxrssilevel, o->rxrssidbm, o->rxcc);
+	}
+	return 0;
+}
+
+/*
  * Parse a PCCMDV2 command
  */
 static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 {
 	char 					*buf;
-	char 					*cmd_type;
-	char 					*cmd_category;
-	char 					*cmd_function;
-	char 					*cmd_options;
+	PCCMDV2_FRAME 			line;
 
-	if (o->debuglevel)
-		ast_verbose("-- Start parsing PCCMDV2 --\nPCCMDV2 LINE = %s\n", cmd);
 	if (cmd[0] == '*') /* To remove the '*' at the beginning of line */
 		buf = cmd + 1;
 	else
 		buf = cmd;
-	cmd_type = strsep(&buf, ",");
-	cmd_category = strsep(&buf, ",");
-	cmd_function = strsep(&buf, ",");
-	cmd_options = buf;
+	line.cmd_type = strsep(&buf, ",");
+	line.cmd_category = strsep(&buf, ",");
+	line.cmd_function = strsep(&buf, ",");
+	line.cmd_options = buf;
 
-	if (o->debuglevel)
-		ast_verbose("TYPE = %s\nCAT = %s\nFNC = %s\nOPT = %s\n",
-			cmd_type, cmd_category, cmd_function, cmd_options);
+	// Hardcore debug parsing
+	//if (o->debuglevel)
+	//	ast_verbose("TYPE = %s\nCAT = %s\nFNC = %s\nOPT = %s\n",
+	//		line.cmd_type, line.cmd_category, line.cmd_function, line.cmd_options);
 
-	if (!strcmp(cmd_type, "NTF"))
+	if (!strcmp(line.cmd_type, "NTF"))
 	{
-		if (!strcmp(cmd_category, "INFO"))
+		if (!strcmp(line.cmd_category, "INFO"))
 		{
-			if (!strcmp(cmd_function, "REV"))
-				strcpy(o->inforev, cmd_options);
-			else if (!strcmp(cmd_function, "DREV"))
-				strcpy(o->infodrev, cmd_options);
-			else if (!strcmp(cmd_function, "FREV"))
-				strcpy(o->infofrev, cmd_options);
-			else if (!strcmp(cmd_function, "COMMENT"))
-				strcpy(o->infocomment, cmd_options);
-			else if (!strcmp(cmd_function, "ESN"))
-				strcpy(o->infoesn, cmd_options);
+			if (!strcmp(line.cmd_function, "REV"))
+				strcpy(o->inforev, line.cmd_options);
+			else if (!strcmp(line.cmd_function, "DREV"))
+				strcpy(o->infodrev, line.cmd_options);
+			else if (!strcmp(line.cmd_function, "FREV"))
+				strcpy(o->infofrev, line.cmd_options);
+			else if (!strcmp(line.cmd_function, "COMMENT"))
+				strcpy(o->infocomment, line.cmd_options);
+			else if (!strcmp(line.cmd_function, "ESN"))
+				strcpy(o->infoesn, line.cmd_options);
 		}
-		else if (!strcmp(cmd_category, "DPMR"))
+		else if (!strcmp(line.cmd_category, "DPMR") ||
+				(!strcmp(line.cmd_category, "CTRL") && !strcmp(line.cmd_function, "DBUSY")))
+			action_dpmr(o, &line);
+		else if (!strcmp(line.cmd_category, "MCH"))
 		{
-			if (!strcmp(cmd_function, "SENDID"))
-				if (strcmp(cmd_options, "NG"))
-				{
-					strcpy(o->dpmridtype, strsep(&cmd_options, ","));
-					strcpy(o->dpmriddest, strsep(&cmd_options, ","));
-					strcpy(o->dpmridsrc, cmd_options);
-				}
-		}
-		else if (!strcmp(cmd_category, "MCH"))
-		{
-			if (!strcmp(cmd_function, "SEL"))
+			if (!strcmp(line.cmd_function, "SEL"))
 			{
 				//We have here an different behavior than expect protocol:
 				//we never receive bank and absolution channel
 				//o->mch_absolute = atoi(strsep(&cmd_options, ","));
 				//o->mch_relative = atoi(strsep(&cmd_options, ","));
-				o->mch_absolute = atoi(cmd_options);
+				o->mch_absolute = atoi(line.cmd_options);
 			}
 		}
 		else
@@ -1025,8 +1089,6 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 	else
 		if (o->debuglevel)
 			ast_log(LOG_WARNING, "Recieve an unknown command type.\n");
-	if (o->debuglevel)
-		ast_verbose("-- End of parsing --\n");
 	return 1;
 }
 
@@ -2120,7 +2182,7 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			M_END(;
 			);
 	}
-	o->debuglevel = 1;
+	o->debuglevel = 0;
 	if (o == &alsaradio_default)		/* we are done with the default */
 		return NULL;
 	o->lastopen = ast_tvnow();	/* don't leave it 0 or tvdiff may wrap */
