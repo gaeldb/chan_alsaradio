@@ -898,21 +898,6 @@ static void 					*serthread(void *arg)
 							i++;
 							break;
 						}
-						// // 0x03 = ETX
-						// else if (c == 0x03)
-						// {
-						// 	//strncpy(&(o->sercommandbuf[i]), "[ETX]\0", 6);
-						// 	//i += 6;
-						// 	break;
-						// }
-						// // '\n' and '\r'
-						// else if (c == 0x0a || c == 0x0d)
-						// {
-						// 	//strncpy(&(o->sercommandbuf[i]), c == 0x0a ? "[0x0a]" : "[0x0d]", 6);
-						// 	//i += 6;
-						// 	break;
-						// }
-						// Printable charaters
 						if (c >= 0x20 && c < 0x7f) // This is a printable character
 						{
 							o->sercommandbuf[i] = c;
@@ -1015,11 +1000,12 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 		else if (!strcmp(cmd_category, "DPMR"))
 		{
 			if (!strcmp(cmd_function, "SENDID"))
-			{
-				strcpy(o->dpmridtype, strsep(&cmd_options, ","));
-				strcpy(o->dpmriddest, strsep(&cmd_options, ","));
-				strcpy(o->dpmridsrc, cmd_options);
-			}	
+				if (strcmp(cmd_options, "NG"))
+				{
+					strcpy(o->dpmridtype, strsep(&cmd_options, ","));
+					strcpy(o->dpmriddest, strsep(&cmd_options, ","));
+					strcpy(o->dpmridsrc, cmd_options);
+				}
 		}
 		else if (!strcmp(cmd_category, "MCH"))
 		{
