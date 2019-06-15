@@ -1000,16 +1000,19 @@ static int 					check_inventory(struct chan_alsaradio_pvt *o, char *id)
 {
 	char 					formated_command[TEXT_SIZE];
 
-	if (strstr(alsaradio_default.inventorystun, id))
+	if (alsaradio_active.inventorystun && strstr(alsaradio_default.inventorystun, id))
 	{
-		ast_verbose("  -- " ANSI_COLOR_RED "/!\\ Find illegal radio %s, stun it now !" ANSI_COLOR_RESET "\n", id);
+		ast_verbose("  -- " ANSI_COLOR_RED "/!\\ Find illegal radio %s, stun it now !"
+					ANSI_COLOR_RESET "\n", id);
 		snprintf(formated_command, TEXT_SIZE - 1, "*SET,DPMR,TXSTUN,IND,%s,0099890", id);
 		send_command(o, formated_command);
 	}
-	else if (strstr(alsaradio_default.inventoryinfo, id))
+	else if (alsaradio_active.inventoryinfo && strstr(alsaradio_default.inventoryinfo, id))
 	{
-		ast_verbose("  -- " ANSI_COLOR_YELLOW "/!\\ Find outdated radio %s, alerting it now !" ANSI_COLOR_RESET "\n", id);
-		snprintf(formated_command, TEXT_SIZE - 1, "*SET,DPMR,TXMSG,IND,%s,0099890,MSG,\"Besoin de reprogrammation - contacter equipe telecom\",NONE", id);
+		ast_verbose("  -- " ANSI_COLOR_YELLOW "/!\\ Find outdated radio %s, alerting it now !"
+					ANSI_COLOR_RESET "\n", id);
+		snprintf(formated_command, TEXT_SIZE - 1,
+				"*SET,DPMR,TXMSG,IND,%s,0099890,MSG,\"## Contacter equipe telecom ##\",NONE", id);
 		send_command(o, formated_command);
 	}
 	return RESULT_SUCCESS;
