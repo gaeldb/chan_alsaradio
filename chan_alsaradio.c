@@ -463,7 +463,7 @@ struct chan_alsaradio_pvt {
 	int 					serdev;
 	ast_mutex_t  			serdevlock;
 	struct termios			sertermsettings;
-	speed_t					serbaudrate;
+	int 					serbaudrate;
 
 	char 					sercommandbuf[COMMAND_BUFFER_SIZE];
 
@@ -543,7 +543,7 @@ static struct chan_alsaradio_pvt
 
 	/* serial stuff */
 	.serdevname = SERIAL_DEV,
-	.serbaudrate = SERIAL_BAUDRATE,
+	.serbaudrate = -1,
 	.serdisable = 0,
 	.serdev = -1,
 
@@ -856,7 +856,7 @@ static void 					*serthread(void *arg)
 			pthread_exit(NULL);
 		}
 
-		ast_log(LOG_NOTICE, "[%s] starting normally on %s\n",o->name, o->serdevname);
+		ast_log(LOG_NOTICE, "[%s] starting normally on %s\n", o->name, o->serdevname);
 
 
 		//mixer_write(o); to be run by call init ?
@@ -2233,6 +2233,7 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			M_STR("output_device", o->outdevname)
 			M_STR("serial_device", o->serdevname)
 			M_UINT("serial_disable", o->serdisable)
+			M_UINT("serial_baudrate", o->serbaudrate)
 			M_UINT("rxondelay",o->rxondelay);
 			M_END(;
 			);
@@ -2587,6 +2588,7 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 {
 	int 				status;
 	int 				ret;
+	speed_t				baudrate;
 
 	if (o->serdisable)
 	{
@@ -2609,9 +2611,21 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 		return (-1);
 	}
 
-	/* Define termios attr table */
-	cfsetispeed(&o->sertermsettings, o->serbaudrate); // Set I baudrate speed
-	cfsetospeed(&o->sertermsettings, o->serbaudrate); // Set O baudrate speed
+	/* Define termios attr table. Here we need to auto select */
+	if (o->serbaudrate == 19200)
+		baudrate = B19200;
+	else if (o->serbaudrate == 9600)
+		baudrate = B9600;
+	else if (o->serbaudrate == 4800)
+		baudrate = B4800;
+	else
+	{
+		baudrate = B9600;
+		o->serbaudrate = 9600;
+		ast_log(LOG_WARNING, "[%s] baudrate not specified in conf file, using B6900\n", o->name);
+	}
+	cfsetispeed(&o->sertermsettings, baudrate); // Set I baudrate speed
+	cfsetospeed(&o->sertermsettings, baudrate); // Set O baudrate speed
 	
 	/* Compatible for USB<->ICOM serial PCCMDV2 */
 	o->sertermsettings.c_iflag &= ~(IXON | IXOFF | IXANY);
@@ -2666,8 +2680,8 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 	ast_pthread_create_background(&o->hardware_monitor_thread, NULL, hardware_monitor_thread, o);
 
 	/* Prepare radio to oprationnal condition on get basic info */
-	send_info_request(o);
-	send_command(o, "*SET,UI,TEXT,Airlink");
+	//send_info_request(o);
+	//send_command(o, "*SET,UI,TEXT,Airlink");
 
 	return (0);
 }
@@ -2804,7 +2818,7 @@ static int 						load_module(void)
 	/* Run into radio structs and initialize serial ports */
 	for (o = alsaradio_default.next; o; o = o->next)
 		if (serial_init(o) >= 0)
-			ast_log(LOG_NOTICE, "[%s] serial %s initialized\n", o->name, o->serdevname);
+			ast_log(LOG_NOTICE, "[%s] serial %s initialized at %i\n", o->name, o->serdevname, o->serbaudrate);
 		else
 			return AST_MODULE_LOAD_FAILURE;
 
