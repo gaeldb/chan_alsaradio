@@ -1036,6 +1036,13 @@ static int 					action_dpmr(struct chan_alsaradio_pvt *o, PCCMDV2_FRAME *line)
 						"\n", o->rxrssilevel, o->rxrssidbm);
 		}
 	}
+	else if (!strcmp(line->cmd_function, "TX"))
+	{
+		if (!strcmp(line->cmd_options, "OFF"))
+			ast_verbose("== DPMR TX OFF\n");
+		else
+			ast_verbose("== " ANSI_COLOR_RED "DPMR TX ON" ANSI_COLOR_RESET "\n");
+	}
 	else if (!strcmp(line->cmd_function, "SENDID"))
 	{
 		if (!strcmp(line->cmd_options, "NG"))
@@ -1107,7 +1114,8 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 				strcpy(o->infoesn, line.cmd_options);
 		}
 		else if (!strcmp(line.cmd_category, "DPMR") ||
-				(!strcmp(line.cmd_category, "CTRL") && !strcmp(line.cmd_function, "DBUSY")))
+				(!strcmp(line.cmd_category, "CTRL") &&
+				(!strcmp(line.cmd_function, "DBUSY") || !strcmp(line.cmd_function, "TX"))))
 			action_dpmr(o, &line);
 		else if (!strcmp(line.cmd_category, "MCH"))
 		{
