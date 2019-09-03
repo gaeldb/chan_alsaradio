@@ -464,6 +464,7 @@ struct chan_alsaradio_pvt {
 	ast_mutex_t  			serdevlock;
 	struct termios			sertermsettings;
 	int 					serbaudrate;
+	int 					serhardwareeptt;
 
 	char 					sercommandbuf[COMMAND_BUFFER_SIZE];
 
@@ -492,6 +493,12 @@ struct chan_alsaradio_pvt {
 	char 		 			rxrssilevel[TEXT_SIZE];
 	short 					rxrssidbm;
 	short 					rxcc;
+
+	/* Last TX stuff */
+	char 					txidtype[TEXT_SIZE];
+	char 					txiddest[TEXT_SIZE];
+	char 					txidsrc[TEXT_SIZE];
+	char 		 			txvalue[TEXT_SIZE];
 
 	/* Syslogger stuff */
 	FILE 					*logfile_p;
@@ -545,6 +552,7 @@ static struct chan_alsaradio_pvt
 	.serdevname = SERIAL_DEV,
 	.serbaudrate = -1,
 	.serdisable = 0,
+	.serhardwareeptt = 0,
 	.serdev = -1,
 
 	/* logger stuff */
@@ -589,6 +597,7 @@ static void 				serial_uninit(struct chan_alsaradio_pvt *o);
 //static int 					serial_getcor(struct chan_alsaradio_pvt *o);
 //static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
 static int 					serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
+static int 					manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status);
 static int					send_hardware_request(struct chan_alsaradio_pvt *o);
 static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
 static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
@@ -738,22 +747,20 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 }
 
 /*
- * Request CTRL harware request to the radio
+ * Request CTRL harware request to the radio (only compatible with repeater ?)
  */
 static int						send_hardware_request(struct chan_alsaradio_pvt *o)
 {
-	// KO depuis cust o ?
-	// if (o)
-	// {
-	// 	send_command(o, "*GET,CTRL,BATV");
-	// 	send_command(o, "*GET,CTRL,BATVST");
-	// 	send_command(o, "*GET,CTRL,NMEA,dPMR STD");
-	// 	send_command(o, "*GET,CTRL,TEMP");
-	// 	send_command(o, "*GET,CTRL,TEMPST");
-	// 	send_command(o, "*GET,CTRL,FANST");
-	// 	send_command(o, "*GET,CTRL,TEMPEX");
-	// 	send_command(o, "*GET,CTRL,TEMPEXST");
-	// }
+	if (o)
+	{
+		send_command(o, "*GET,CTRL,BATV");
+		send_command(o, "*GET,CTRL,BATVST");
+		send_command(o, "*GET,CTRL,TEMP");
+		send_command(o, "*GET,CTRL,TEMPST");
+		send_command(o, "*GET,CTRL,FANST");
+		send_command(o, "*GET,CTRL,TEMPEX");
+		send_command(o, "*GET,CTRL,TEMPEXST");
+	}
 	return RESULT_SUCCESS;
 }
 
@@ -968,28 +975,56 @@ static void 					*serthread(void *arg)
 			}
 			*/
 
-			// c'est quoi tout ca ??
+			
+			// Change PTT status if needed. Pas trop compris comment marche la mutex et le txreq...
 			ast_mutex_lock(&o->txqlock);
-			txreq = o->txkeyed;			//!(AST_LIST_EMPTY(&o->txq));
+			txreq = o->txkeyed;				//!(AST_LIST_EMPTY(&o->txq));
 			ast_mutex_unlock(&o->txqlock);
 			txreq = txreq || o->txtestkey;	// ??
 			if (txreq && (!o->lasttx))
-			{
-				serial_pttkey(o, PTT_ON);
-				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update PTT = %d\n", txreq);
-			}
+				(void) manage_ptt(o, PTT_ON);
 			else if ((!txreq) && o->lasttx)
-			{
-				serial_pttkey(o, PTT_OFF);
-				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update PTT = %d\n", txreq);
-			}
+				(void) manage_ptt(o, PTT_OFF);
 			o->lasttx = txreq;
+
+			// Update last serial access
 			time(&o->lastsertime);
-			//ast_log(LOG_NOTICE, "End of loop\n");
 		}
 		o->lasttx = 0;
 	}
     pthread_exit(NULL);
+}
+
+/*
+ * Manage PTT actions for hardware and software type
+ */
+
+static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
+{
+	if (ptt == PTT_ON)
+	{
+		ast_verbose("== " ANSI_COLOR_YELLOW "EPTT ON" ANSI_COLOR_RESET "\n");
+		if (o->serhardwareeptt == 1)	// Hardware PTT (need a homemade cable)
+			serial_pttkey(o, PTT_ON);
+		else 							// Software EPTT (works only for repeater)
+		{
+			 // histoire de la réservation pour la tempo de maintient, ou du monde polite ? Selon la prog relais ?
+			if (send_command(o, "*SET,DPMR,TXSETUP,,0100000,0000895") != RESULT_SUCCESS)
+				return -1;
+			if (send_command(o, "*SET,CTRL,EPTT,ON") != RESULT_SUCCESS)
+				return -1;
+		}
+	}
+	else
+	{
+		ast_verbose("== " ANSI_COLOR_YELLOW "EPTT OFF" ANSI_COLOR_RESET "\n");
+		if (o->serhardwareeptt == 1)	// Hardware PTT (need a homemade cable)
+			serial_pttkey(o, PTT_OFF);
+		else 							// Software EPTT (works only for repeater)
+			if (send_command(o, "*SET,CTRL,EPTT,OFF") != RESULT_SUCCESS)
+				return -1;
+	}
+	return RESULT_SUCCESS;
 }
 
 /*
@@ -1055,6 +1090,16 @@ static int 					action_dpmr(struct chan_alsaradio_pvt *o, PCCMDV2_FRAME *line)
 	{
 		if (!strcmp("VALID", strsep(&(line->cmd_options), ",")))
 			o->rxcc = atoi(strsep(&(line->cmd_options), ","));
+	}
+	else if (!strcmp(line->cmd_function, "TXSETUP"))
+	{
+		strcpy(o->txidtype, strsep(&(line->cmd_options), ","));
+		strcpy(o->txiddest, strsep(&(line->cmd_options), ","));
+		strcpy(o->txidsrc, strsep(&(line->cmd_options), ","));
+		strcpy(o->txvalue, strsep(&(line->cmd_options), ","));
+		ast_verbose("  -- %s with %s to %s:%s (%s)\n",
+					line->cmd_function, o->txidsrc, o->txidtype,
+					o->txiddest, o->txvalue);
 	}
 	else if (!strcmp(line->cmd_function, "RXVCALL") ||
 			 !strcmp(line->cmd_function, "RXSTAT") ||
@@ -1128,9 +1173,9 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 				o->mch_absolute = atoi(line.cmd_options);
 			}
 		}
-		else
-			if (o->debuglevel)
-				ast_log(LOG_WARNING, "Recieve an unknown command category.\n");
+		//else
+		//	if (o->debuglevel)
+		//		ast_log(LOG_WARNING, "Recieve an unknown command category.\n");
 	}
 	else
 		if (o->debuglevel)
@@ -2242,6 +2287,8 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			M_STR("serial_device", o->serdevname)
 			M_UINT("serial_disable", o->serdisable)
 			M_UINT("serial_baudrate", o->serbaudrate)
+			M_UINT("serial_baudrate", o->serbaudrate)
+			M_UINT("force_hardware_eptt", o->serhardwareeptt)
 			M_UINT("rxondelay",o->rxondelay);
 			M_END(;
 			);
@@ -2688,7 +2735,7 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 	ast_pthread_create_background(&o->hardware_monitor_thread, NULL, hardware_monitor_thread, o);
 
 	/* Prepare radio to oprationnal condition on get basic info */
-	//send_info_request(o);
+	send_info_request(o);
 	//send_command(o, "*SET,UI,TEXT,Airlink");
 
 	return (0);
