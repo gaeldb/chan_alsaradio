@@ -2696,7 +2696,7 @@ static void 		serial_uninit(struct chan_alsaradio_pvt *o)
 	}
 	o->stopser = 1;
 	pthread_join(o->serthread, NULL);
-	pthread_join(o->hardware_monitor_thread, NULL);
+	pthread_cancel(o->hardware_monitor_thread);
 	ast_mutex_destroy(&o->txqlock);
 	ast_mutex_destroy(&o->serdevlock);
 	close(o->serdev);
