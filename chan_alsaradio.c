@@ -107,7 +107,12 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 /* ALSA and serial stuff */
 #define ALSA_INDEV						"default"
 #define ALSA_OUTDEV						"default"
+
+
+// to be tested... was 8000 -> ????
 #define DESIRED_RATE					8000
+
+
 
 #define HARDWARE_MONITOR_LOOP_TIME		60
 
@@ -1003,12 +1008,15 @@ static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 {
 	if (ptt == PTT_ON)
 	{
-		ast_verbose("== " ANSI_COLOR_YELLOW "EPTT ON" ANSI_COLOR_RESET "\n");
 		if (o->serhardwareeptt == 1)	// Hardware PTT (need a homemade cable)
-			serial_pttkey(o, PTT_ON);
+			{
+				ast_verbose("== " ANSI_COLOR_YELLOW "EPTT ON (hardware PTT)" ANSI_COLOR_RESET "\n");
+				serial_pttkey(o, PTT_ON);
+			}
 		else 							// Software EPTT (works only for repeater)
 		{
-			 // histoire de la réservation pour la tempo de maintient, ou du monde polite ? Selon la prog relais ?
+			ast_verbose("== " ANSI_COLOR_YELLOW "EPTT ON (software PTT)" ANSI_COLOR_RESET "\n");
+			// histoire de la réservation pour la tempo de maintient, ou du monde polite ? Selon la prog relais ?
 			if (send_command(o, "*SET,DPMR,TXSETUP,,0100000,0000895") != RESULT_SUCCESS)
 				return -1;
 			if (send_command(o, "*SET,CTRL,EPTT,ON") != RESULT_SUCCESS)
@@ -1017,12 +1025,17 @@ static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 	}
 	else
 	{
-		ast_verbose("== " ANSI_COLOR_YELLOW "EPTT OFF" ANSI_COLOR_RESET "\n");
 		if (o->serhardwareeptt == 1)	// Hardware PTT (need a homemade cable)
+		{
+			ast_verbose("== " ANSI_COLOR_YELLOW "EPTT OFF (hardware PTT)" ANSI_COLOR_RESET "\n");
 			serial_pttkey(o, PTT_OFF);
+		}
 		else 							// Software EPTT (works only for repeater)
+		{
+			ast_verbose("== " ANSI_COLOR_YELLOW "EPTT OFF (software PTT)" ANSI_COLOR_RESET "\n");
 			if (send_command(o, "*SET,CTRL,EPTT,OFF") != RESULT_SUCCESS)
 				return -1;
+		}
 	}
 	return RESULT_SUCCESS;
 }
@@ -2514,18 +2527,21 @@ static struct ast_cli_entry cli_alsaradio[] = {
 	AST_CLI_DEFINE(handle_aradio_active,"Change commanded device")
 };
 
-static snd_pcm_t *alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pcm_stream_t stream)
+static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o,
+												char *dev,
+												snd_pcm_stream_t stream)
 {
-	int err;
-	int direction;
-	snd_pcm_t *handle = NULL;
-	snd_pcm_hw_params_t *hwparams = NULL;
-	snd_pcm_sw_params_t *swparams = NULL;
-	struct pollfd pfd;
-	snd_pcm_uframes_t period_size = PERIOD_FRAMES * 4;
-	snd_pcm_uframes_t buffer_size = 0;
-	unsigned int rate = DESIRED_RATE;
-	snd_pcm_uframes_t start_threshold, stop_threshold;
+	int 						err;
+	int 						direction;
+	snd_pcm_t 					*handle = NULL;
+	snd_pcm_hw_params_t 		*hwparams = NULL;
+	snd_pcm_sw_params_t 		*swparams = NULL;
+	struct pollfd 				pfd;
+	snd_pcm_uframes_t 			period_size = PERIOD_FRAMES * 4;
+	snd_pcm_uframes_t 			buffer_size = 0;
+	static unsigned int 		rate = DESIRED_RATE;					/* rate desired */
+	static unsigned int 		channels = 1;           				/* count of channels */
+	snd_pcm_uframes_t 			start_threshold, stop_threshold;
 
 	err = snd_pcm_open(&handle, dev, stream, SND_PCM_NONBLOCK);
 	if (err < 0) {
@@ -2547,12 +2563,14 @@ static snd_pcm_t *alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pc
 	if (err < 0)
 		ast_log(LOG_ERROR, "set_format failed: %s\n", snd_strerror(err));
 
-	err = snd_pcm_hw_params_set_channels(handle, hwparams, 1);
+	err = snd_pcm_hw_params_set_channels(handle, hwparams, channels);
 	if (err < 0)
-		ast_log(LOG_ERROR, "set_channels failed: %s\n", snd_strerror(err));
+		ast_log(LOG_ERROR, "Channels count (%u) no available. set_channels() failed: %s\n", channels, snd_strerror(err));
 
 	direction = 0;
 	err = snd_pcm_hw_params_set_rate_near(handle, hwparams, &rate, &direction);
+	if (err < 0)
+		ast_log(LOG_ERROR, "set_rate_near failed: %s\n", snd_strerror(err));
 	if (rate != DESIRED_RATE)
 		ast_log(LOG_WARNING, "Rate not correct, requested %d, got %d\n", DESIRED_RATE, rate);
 
@@ -2627,13 +2645,12 @@ static snd_pcm_t *alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pc
 }
 
 
-static void alsa_card_uninit(struct chan_alsaradio_pvt *o)
+static void 			alsa_card_uninit(struct chan_alsaradio_pvt *o)
 {
 	if (o->inhandle)
-                snd_pcm_close(o->inhandle);
-        if (o->outhandle)
-                snd_pcm_close(o->outhandle);
-
+        snd_pcm_close(o->inhandle);
+    if (o->outhandle)
+        snd_pcm_close(o->outhandle);
 	o->sounddev = -1;
 	o->indev = -1;
 	o->outdev = -1;
