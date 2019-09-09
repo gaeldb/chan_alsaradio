@@ -411,9 +411,10 @@ struct chan_alsaradio_pvt {
 	int  	tracetype;
 	int     tracelevel;
 
-	char lastrx;
-	char rxsersq;
-	char rxserctcss;
+	char 		lastrx;
+	char 		rxsersq;
+	char 		rxserctcss;
+	int 		txlatencydelay;	// Number of sec to wait before releasing PTT
 
 	char rxkeyed;	  			// indicates rx signal present
 
@@ -544,6 +545,7 @@ static struct chan_alsaradio_pvt
 	.boost = BOOST_SCALE,
 	.usedtmf = 1,
 	.rxondelay = 0,
+	.txlatencydelay = 1,
 
 	/* ALSA stuff */
 	.silencesuppression = 0,
@@ -1025,6 +1027,8 @@ static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 	}
 	else
 	{
+		if (o->txlatencydelay != 0)		// Wait X seconds to avoid latency voice cut effect.
+			sleep(o->txlatencydelay);
 		if (o->serhardwareeptt == 1)	// Hardware PTT (need a homemade cable)
 		{
 			ast_verbose("== " ANSI_COLOR_YELLOW "EPTT OFF (hardware PTT)" ANSI_COLOR_RESET "\n");
@@ -2644,13 +2648,12 @@ static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o,
 	return handle;
 }
 
-
 static void 			alsa_card_uninit(struct chan_alsaradio_pvt *o)
 {
 	if (o->inhandle)
-        snd_pcm_close(o->inhandle);
-    if (o->outhandle)
-        snd_pcm_close(o->outhandle);
+		snd_pcm_close(o->inhandle);
+	if (o->outhandle)
+		snd_pcm_close(o->outhandle);
 	o->sounddev = -1;
 	o->indev = -1;
 	o->outdev = -1;
