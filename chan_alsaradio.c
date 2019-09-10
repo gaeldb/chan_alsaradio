@@ -958,8 +958,8 @@ static void 					*serthread(void *arg)
 					}
 					if (o->debuglevel)
 						ast_verbose("[%s] recv: %s\n", o->name, o->sercommandbuf);
-					//if (!alsaradio_default.logfile_disable)
-					//	log_pccmdv2_command(o, o->sercommandbuf);
+					if (!alsaradio_default.logfile_disable)
+						log_pccmdv2_command(o, o->sercommandbuf);
 					parse_pccmdv2_command(o, o->sercommandbuf);
 				}
 			}
@@ -2291,17 +2291,21 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			M_F("ctcssfrom",store_rxsdtype(o,(char *)v->value))
  			M_BOOL("rxboost",o->rxboostset)
 			M_UINT("duplex",o->radioduplex)
+			
 			/* ALSA stuff */
 			M_BOOL("silencesuppression", o->silencesuppression)
 			M_UINT("silencethreshold", o->silencethreshold)
 			M_STR("input_device", o->indevname)
 			M_STR("output_device", o->outdevname)
+			
+			/* Serial stuff */
 			M_STR("serial_device", o->serdevname)
 			M_UINT("serial_disable", o->serdisable)
 			M_UINT("serial_baudrate", o->serbaudrate)
 			M_UINT("serial_baudrate", o->serbaudrate)
 			M_UINT("force_hardware_eptt", o->serhardwareeptt)
-			M_UINT("rxondelay",o->rxondelay);
+			M_UINT("rxondelay",o->rxondelay)
+			M_BOOL("logfile_disable", o->logfile_disable);
 			M_END(;
 			);
 	}
@@ -2884,6 +2888,10 @@ static int 						load_module(void)
 
 	/* Load inventory file */
 	(void)load_inventory();
+
+	/* Load log file */
+	if (!alsaradio_default.logfile_disable)
+		load_log_file();
 
 	/* Run into radio structs and initialize serial ports */
 	for (o = alsaradio_default.next; o; o = o->next)
