@@ -821,14 +821,21 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 static void 					*hardware_monitor_thread(void *arg)
 {
 	struct chan_alsaradio_pvt 	*o = (struct chan_alsaradio_pvt *) arg;
+	unsigned int 				print_time;
 
+	print_time = 5;
 	ast_log(LOG_NOTICE, "[%s] monitoring normally\n", o->name);
 	while (42)
 	{
 		if (o->debuglevel)
+			ast_verbose("[%s] Print keepalive message to radio.\n", o->name);
+		send_command(o, "*SET,UI,TEXT,Connexion OK");
+		sleep(print_time);
+		send_command(o, "*SET,UI,TEXT,");
+		if (o->debuglevel)
 			ast_verbose("[%s] Sending hardware monitoring requests (next in %d sec.)\n", o->name, o->hardware_monitor_loop_t);
 		send_hardware_request(o);
-		sleep(o->hardware_monitor_loop_t);
+		sleep(o->hardware_monitor_loop_t - print_time);
 	}
     pthread_exit(NULL);
 }
@@ -2757,7 +2764,6 @@ static int 				serial_init(struct chan_alsaradio_pvt *o)
 
 	/* Prepare radio to oprationnal condition on get basic info */
 	send_info_request(o);
-	//send_command(o, "*SET,UI,TEXT,Airlink");
 
 	return (0);
 }
