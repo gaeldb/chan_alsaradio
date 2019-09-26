@@ -2313,7 +2313,7 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			M_UINT("serial_baudrate", o->serbaudrate)
 			M_UINT("force_hardware_eptt", o->serhardwareeptt)
 			M_UINT("rxondelay",o->rxondelay)
-			M_BOOL("logfile_disable", o->logfile_disable);
+			M_BOOL("logfile_disable", alsaradio_default.logfile_disable);
 			M_END(;
 			);
 	}
