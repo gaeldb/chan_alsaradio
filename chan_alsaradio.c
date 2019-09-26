@@ -2652,9 +2652,9 @@ static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o,
 static void 			alsa_card_uninit(struct chan_alsaradio_pvt *o)
 {
 	if (o->inhandle)
-        snd_pcm_close(o->inhandle);
-    if (o->outhandle)
-        snd_pcm_close(o->outhandle);
+		snd_pcm_close(o->inhandle);
+	if (o->outhandle)
+		snd_pcm_close(o->outhandle);
 	o->sounddev = -1;
 	o->indev = -1;
 	o->outdev = -1;
