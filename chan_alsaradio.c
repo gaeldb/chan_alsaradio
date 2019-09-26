@@ -420,7 +420,7 @@ struct chan_alsaradio_pvt {
 
 	char lasttx;
 	char txkeyed;				// tx key request from upper layers 
-	//char txtestkey;
+	char txtestkey;
 
 	time_t lastsertime;
 	struct ast_dsp *dsp;
@@ -725,7 +725,7 @@ static void						kickptt(struct chan_alsaradio_pvt *o)
 	char 						c;
 	ssize_t						ret;
 
-	c = 1;
+	c = 0;
 	if (o && o->pttkick)
 	{
 		if ((ret = write(o->pttkick[1], &c, 1)) <= 0)
@@ -818,7 +818,7 @@ static struct chan_alsaradio_pvt *find_desc(const char *dev)
 }
 
 /*
- * Hardware monitor taskprocessor thread
+ * Hardware monitor taskprocessor thread 
  */
 static void 					*hardware_monitor_thread(void *arg)
 {
@@ -836,24 +836,19 @@ static void 					*hardware_monitor_thread(void *arg)
 }
 
 /*
- * I'm a thread created to manage serial port reading
- * TODO: separate PTT and serial reading in 2 threads
- */
+*/
 static void 					*serthread(void *arg)
 {
-	/* Thread management */
+	//unsigned char keyed,ctcssed,
+
+	unsigned char 				txreq;
+	int 						res;
 	struct chan_alsaradio_pvt 	*o = (struct chan_alsaradio_pvt *) arg;
 	struct timeval 				to;
-
-	/* PTT management stuff */
-	int 						_txkeyed;		// Local var of o->txkeyed
-	int 						_lasttx;		// Local var of o->lasttx
-
-	/* FD selecting, reading and buffering stuff */
-	char 						c;				// Buffer for write
-	int 						res;
 	ast_fdset 					rfds;
 	ssize_t 					bytes_read;
+
+	char 						c;
 	int 						i;
 
 	//struct ast_config *cfg1;
@@ -862,7 +857,7 @@ static void 					*serthread(void *arg)
 
 	//struct ast_flags zeroflag = {0};
 
-    while (!o->stopser)
+    while(!o->stopser)
     {
         time(&o->lastsertime);
 
@@ -910,8 +905,11 @@ static void 					*serthread(void *arg)
 				Good to know ast_select emulates linux behaviour in terms of timeout handling */
 
 			/* WHAT TO DO IF SERIAL IS DISABLED ????? */
-			/*if (o->serdisable)
-			return (0);*/
+				/*if (o->serdisable)
+		return (0);*/
+
+
+			//ast_log(LOG_NOTICE, "Serial FD: <%i> - Piep FD: <%i>\n", o->serdev, o->pttkick[0]);
 
 			FD_ZERO(&rfds);
 			FD_SET(o->serdev, &rfds);
@@ -919,6 +917,7 @@ static void 					*serthread(void *arg)
 
 			/* Get the highter FD for select */
 			res = ast_select(o->serdev > o->pttkick[0] ? o->serdev + 1 : o->pttkick[0] + 1 , &rfds, NULL, NULL, &to);
+			//ast_log(LOG_NOTICE, "select return <%i>\n", res);
 			if (res < 0)
 			{
 				ast_log(LOG_WARNING, "select failed: %s\n", strerror(errno));
@@ -927,17 +926,16 @@ static void 					*serthread(void *arg)
 			}
 			else /* We have something to read */
 			{
-				// PTT stuff
 				if (FD_ISSET(o->pttkick[0], &rfds))
 				{
 					if ((bytes_read = read(o->pttkick[0], &c, 1)) <= 0)
 						ast_log(LOG_ERROR, "Error in read (returns %i)\n", (int) bytes_read);
 				}
-				// Serial command stuff
 				if (FD_ISSET(o->serdev, &rfds))
 				{
 					// probably need to protec sercommandbuf with a mutex !!!!!
 					//ast_mutex_lock(&o->sercommandlock) and ast_mutex_unlock(&o->sercommandlock);
+
 					i = 0;
 					while (42)
 					{
@@ -964,19 +962,37 @@ static void 					*serthread(void *arg)
 				}
 			}
 
-			// Select and run PTT actions
+			
+			
+			
+
+/*
+			keyed = sim_cor || serial_getcor(o);
+			if (keyed != o->rxsersq)
+			{
+				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update rxsersq = %d\n",keyed);
+				o->rxsersq = keyed;
+			}
+
+			ctcssed = serial_getctcss(o);
+			if (ctcssed != o->rxserctcss)
+			{
+				ast_log(LOG_NOTICE, "chan_alsaradio() serthread: update rxserctcss = %d\n",ctcssed);
+				o->rxserctcss = ctcssed;
+			}
+			*/
+
+			
+			// Change PTT status if needed. Pas trop compris comment marche la mutex et le txreq...
 			ast_mutex_lock(&o->txqlock);
-			_txkeyed = o->txkeyed;
-			_lasttx = o->lasttx;
+			txreq = o->txkeyed;				//!(AST_LIST_EMPTY(&o->txq));
 			ast_mutex_unlock(&o->txqlock);
-			if (_txkeyed && !_lasttx)
+			txreq = txreq || o->txtestkey;	// ??
+			if (txreq && (!o->lasttx))
 				(void) manage_ptt(o, PTT_ON);
-			else if (!_txkeyed && _lasttx)
-				if (manage_ptt(o, PTT_OFF) != RESULT_SUCCESS)
-					_txkeyed = 1; 			// PTT is still ON if PTT_OFF failed
-			ast_mutex_lock(&o->txqlock);
-			o->lasttx = _txkeyed;
-			ast_mutex_unlock(&o->txqlock);
+			else if ((!txreq) && o->lasttx)
+				(void) manage_ptt(o, PTT_OFF);
+			o->lasttx = txreq;
 
 			// Update last serial access
 			time(&o->lastsertime);
@@ -992,8 +1008,6 @@ static void 					*serthread(void *arg)
 
 static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 {
-	int 					_txkeyed;
-
 	if (ptt == PTT_ON)
 	{
 		if (o->serhardwareeptt == 1)	// Hardware PTT (need a homemade cable)
@@ -1014,16 +1028,7 @@ static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 	else
 	{
 		if (o->txlatencydelay != 0)		// Wait X seconds to avoid latency voice cut effect.
-		{
-			if (o->debuglevel)
-				ast_verbose(" << Delay before PTT release: %is >> \n", o->txlatencydelay);
 			sleep(o->txlatencydelay);
-			ast_mutex_lock(&o->txqlock);
-			_txkeyed = o->txkeyed;
-			ast_mutex_unlock(&o->txqlock);
-			if (_txkeyed)				// PTT was pressed during my sleep: cancel PTT_OFF
-				return -1;
-		}
 		if (o->serhardwareeptt == 1)	// Hardware PTT (need a homemade cable)
 		{
 			ast_verbose("== " ANSI_COLOR_YELLOW "EPTT OFF (hardware PTT)" ANSI_COLOR_RESET "\n");
@@ -1561,38 +1566,38 @@ static struct ast_frame *alsa_read(struct chan_alsaradio_pvt *o)
 }
 
 
-static struct ast_frame 		*alsaradio_read(struct ast_channel *c)
+static struct ast_frame *alsaradio_read(struct ast_channel *c)
 {
-	int 						cd,sd;
-	struct chan_alsaradio_pvt 	*o = ast_channel_tech_pvt(c);
-	struct ast_frame 			*f = &o->read_f,*f1;
-	struct ast_frame 			wf = { AST_FRAME_CONTROL };
-	//struct timeval 				tv;
-	struct timeval 				tv2;
-	time_t 						now;
+	int cd,sd;
+	struct chan_alsaradio_pvt *o = ast_channel_tech_pvt(c);
+	struct ast_frame *f = &o->read_f,*f1;
+	struct ast_frame wf = { AST_FRAME_CONTROL };
+	time_t now;
 
 	if (o->lastsertime)
 	{
 		time(&now);
-		if ((now - o->lastsertime) > 3 + o->txlatencydelay)
+		if ((now - o->lastsertime) > 3)
 		{
-			ast_log(LOG_ERROR,"SER process has died or something... time = %ld\n", now - o->lastsertime);
+			ast_log(LOG_ERROR,"SER process has died or something!!\n");
 			return NULL;
 		}
 	}
 
+
 	f = alsa_read(o);
 
 	if (!o->txkeyed)
-	{
-		//tv = ast_tvnow();
-		f = alsa_read(o);
-		tv2 = ast_tvnow();
-		//if ((tv2.tv_usec - o->tv.tv_usec) > 20000)
-		//	ast_log(LOG_ERROR, "time: %ld, %ld\n", tv2.tv_usec - o->tv.tv_usec, tv2.tv_usec - tv.tv_usec);
+        {
+                //struct timeval tv;
+                struct timeval tv2;
+                //tv = ast_tvnow();
+                //f = alsa_read(o);
+                tv2 = ast_tvnow();
+		//if (( tv2.tv_usec - o->tv.tv_usec) > 20000)
+		//ast_log(LOG_ERROR, "time: %i, %i\n", tv2.tv_usec - o->tv.tv_usec, tv2.tv_usec - tv.tv_usec);
 		o->tv = tv2;
 	}
-
 	/* if we don't have enough data just return the NULL frame*/
 	if (f->frametype == AST_FRAME_NULL)
 		return f;
@@ -1886,7 +1891,7 @@ static int 						console_key(int fd, int argc, const char *const *argv)
 	o = find_desc(alsaradio_active);
 	if (argc != 2)
 		return RESULT_SHOWUSAGE; 
-	o->txkeyed = 1;
+	o->txtestkey = 1;
 	kickptt(o);
 	return RESULT_SUCCESS;
 }
@@ -1899,7 +1904,7 @@ static int 						console_unkey(int fd, int argc, const char *const *argv)
 	o = find_desc(alsaradio_active);
 	if (argc != 2)
 		return RESULT_SHOWUSAGE;
-	o->txkeyed = 0;
+	o->txtestkey = 0;
 	kickptt(o);
 	return RESULT_SUCCESS;
 }
