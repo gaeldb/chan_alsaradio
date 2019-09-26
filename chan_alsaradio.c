@@ -545,7 +545,7 @@ static struct chan_alsaradio_pvt
 	.boost = BOOST_SCALE,
 	.usedtmf = 1,
 	.rxondelay = 0,
-	.txlatencydelay = 0,
+	.txlatencydelay = 1,
 
 	/* ALSA stuff */
 	.silencesuppression = 0,
