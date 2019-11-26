@@ -608,6 +608,7 @@ static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
 static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					load_log_file(void);
+static int 					unload_log_file(void);
 static int 					load_inventory(void);
 
 static struct ast_channel_tech
@@ -1205,6 +1206,8 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 
 /*
  * Log a PCCMDV2 COMMAND
+ * Not cool: file is opened and closed at each line.
+ * This is the only method to catch file rotation/deletion
  */
 static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 {
@@ -1214,6 +1217,11 @@ static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
     struct tm  				*tm_info;
     char 					tm_buffer[26];
 
+	if (load_log_file() < 0)
+	{
+		ast_log(LOG_ERROR, "Cannot open log file %s: %s\n", alsaradio_default.logfile_name, strerror(errno));
+	 	return -1;
+	}
     time(&timer);
     tm_info = localtime(&timer);
     strftime(tm_buffer, 26, "%Y/%m/%d %H:%M:%S", tm_info);
@@ -1226,6 +1234,8 @@ static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 	 		return -1;
 		}
 	fflush(alsaradio_default.logfile_p);   
+	if (unload_log_file() < 0)
+		ast_log(LOG_ERROR, "Cannot close log file %s: %s\n", alsaradio_default.logfile_name, strerror(errno));
 	ast_free(line);
 	return 0;
 }
@@ -2897,10 +2907,6 @@ static int 						load_module(void)
 	/* Load inventory file */
 	(void)load_inventory();
 
-	/* Load log file */
-	if (!alsaradio_default.logfile_disable)
-		load_log_file();
-
 	/* Run into radio structs and initialize serial ports */
 	for (o = alsaradio_default.next; o; o = o->next)
 		if (serial_init(o) >= 0)
@@ -2961,10 +2967,23 @@ static int 						load_inventory(void)
  */
 static int 						load_log_file(void)
 {
-	ast_log(LOG_NOTICE, "Opening log file: %s\n", alsaradio_default.logfile_name);
 	if (!(alsaradio_default.logfile_p = fopen(alsaradio_default.logfile_name, "a")))
 	{
 		ast_log(LOG_ERROR, "Error when opening log file %s: %s\n",
+			alsaradio_default.logfile_name, strerror(errno));
+		return -1;
+	}
+	return 0;
+}
+
+/*
+ * Close log file
+ */
+static int 						unload_log_file(void)
+{
+	if (fclose(alsaradio_default.logfile_p) != 0)
+	{
+		ast_log(LOG_ERROR, "Error when closing log file %s: %s\n",
 			alsaradio_default.logfile_name, strerror(errno));
 		return -1;
 	}
