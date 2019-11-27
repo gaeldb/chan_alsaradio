@@ -1226,13 +1226,13 @@ static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
     tm_info = localtime(&timer);
     strftime(tm_buffer, 26, "%Y/%m/%d %H:%M:%S", tm_info);
     line = ast_str_create(MAX_BUFFER_SIZE + COMMAND_BUFFER_SIZE);
-	ast_str_set(&line, 0, "%s;%s@IP;CANAL;COMRX;%s\n", tm_buffer, o->name, cmd);
+	ast_str_set(&line, 0, "%s;%s@telecoms.croix-rouge.fr;1;COMRX;%s\n", tm_buffer, o->name, cmd);
 	if ((ret = fwrite(ast_str_buffer(line), sizeof(char), ast_str_strlen(line), alsaradio_default.logfile_p)) <= 0)
-		{
-	 		ast_log(LOG_ERROR, "Write error in %s: %s\n", alsaradio_default.logfile_name, strerror(errno));
-	 		ast_free(line);
-	 		return -1;
-		}
+	{
+ 		ast_log(LOG_ERROR, "Write error in %s: %s\n", alsaradio_default.logfile_name, strerror(errno));
+ 		ast_free(line);
+ 		return -1;
+	}
 	fflush(alsaradio_default.logfile_p);   
 	if (unload_log_file() < 0)
 		ast_log(LOG_ERROR, "Cannot close log file %s: %s\n", alsaradio_default.logfile_name, strerror(errno));
