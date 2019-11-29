@@ -112,7 +112,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 // to be tested... was 8000 -> ????
 #define DESIRED_RATE					8000
 
-
+#define MACRO_SIZE						6
 
 #define HARDWARE_MONITOR_LOOP_TIME		60
 
@@ -519,6 +519,8 @@ struct chan_alsaradio_pvt {
 	char 					*inventorystun;
 	char 					*inventoryinfo;
 
+	/* Macro for remote managemebnt */
+	char 					digit_list[MACRO_SIZE];
 };
 
 /* A PCCMDV2 command structure */
@@ -610,6 +612,8 @@ static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					load_log_file(void);
 static int 					unload_log_file(void);
 static int 					load_inventory(void);
+static int 					manage_macro(struct chan_alsaradio_pvt *o, char digit);
+static int 					exec_macro(struct chan_alsaradio_pvt *o);
 
 static struct ast_channel_tech
 							alsaradio_tech = {
@@ -1290,6 +1294,30 @@ static int setformat(struct chan_alsaradio_pvt *o, int mode)
 	return (o->sounddev);
 }
 
+static int 						manage_macro(struct chan_alsaradio_pvt *o, char digit)
+{
+	if (digit == '*')
+		memset(o->digit_list, 0, MACRO_SIZE);
+	else if (digit == '#')
+	{
+		ast_verbose(" << Console Received macro %s >> \n", o->digit_list);
+		(void) exec_macro(o);
+	}
+	else if (strlen(o->digit_list) < MACRO_SIZE)
+		o->digit_list[strlen(o->digit_list)] = digit;
+	return (RESULT_SUCCESS);
+}
+
+static int 						exec_macro(struct chan_alsaradio_pvt *o)
+{
+	if (!(strcmp(o->digit_list, "000001")))
+	{
+		if (send_command(o, "*SET,UI,RESET") != RESULT_SUCCESS)
+			ast_log(LOG_ERROR, "Error when sending command\n");
+	}
+	return (RESULT_SUCCESS);
+}
+
 /*
  * some of the standard methods supported by channels.
  */
@@ -1300,8 +1328,12 @@ static int 						alsaradio_digit_begin(struct ast_channel *c, char digit)
 
 static int 						alsaradio_digit_end(struct ast_channel *c, char digit, unsigned int duration)
 {
+	struct chan_alsaradio_pvt 	*o;
+
+	o = ast_channel_tech_pvt(c);
 	/* no better use for received digits than print them */
 	ast_verbose(" << Console Received digit %c of duration %u ms >> \n", digit, duration);
+	manage_macro(o, digit);
 	return 0;
 }
 
