@@ -1134,12 +1134,18 @@ static int 					action_dpmr(struct chan_alsaradio_pvt *o, PCCMDV2_FRAME *line)
 	else if (!strcmp(line->cmd_function, "TXSETUP"))
 	{
 		strcpy(o->txidtype, strsep(&(line->cmd_options), ","));
-		strcpy(o->txiddest, strsep(&(line->cmd_options), ","));
-		strcpy(o->txidsrc, strsep(&(line->cmd_options), ","));
-		strcpy(o->txvalue, strsep(&(line->cmd_options), ","));
-		ast_verbose("  -- %s with %s to %s:%s (%s)\n",
-					line->cmd_function, o->txidsrc, o->txidtype,
-					o->txiddest, o->txvalue);
+		if (!strcmp(o->txidtype, "NG"))
+			ast_verbose("  -- %s with %s failed (%s), channel is busy ?\n",
+						line->cmd_function, o->txidsrc, o->txidtype);
+		else
+		{
+			strcpy(o->txiddest, strsep(&(line->cmd_options), ","));
+			strcpy(o->txidsrc, strsep(&(line->cmd_options), ","));
+			strcpy(o->txvalue, strsep(&(line->cmd_options), ","));
+			ast_verbose("  -- %s with %s to %s:%s (%s)\n",
+						line->cmd_function, o->txidsrc, o->txidtype,
+						o->txiddest, o->txvalue);
+		}
 	}
 	else if (!strcmp(line->cmd_function, "RXVCALL") ||
 			 !strcmp(line->cmd_function, "RXSTAT") ||
