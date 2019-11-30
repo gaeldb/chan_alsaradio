@@ -1806,10 +1806,8 @@ static int 						alsaradio_indicate(struct ast_channel *c, int cond, const void 
 				ast_verbose(" << Radio unkey dev=%s TX OFF >> \n", o->name);
 			break;
 		case AST_CONTROL_SRCCHANGE:
-			ast_verbose(" << New media source >> \n");
-			break;
 		case AST_CONTROL_PVT_CAUSE_CODE:
-			ast_verbose(" << Updated / deleted media source >> \n");
+			ast_verbose(" << Updated media source >> \n");
 			break;
 		default:
 			ast_log(LOG_WARNING, "Don't know what to do with condition %d on %s\n", cond, ast_channel_name(c));
