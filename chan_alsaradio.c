@@ -1215,6 +1215,7 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 				//o->mch_absolute = atoi(strsep(&cmd_options, ","));
 				//o->mch_relative = atoi(strsep(&cmd_options, ","));
 				o->mch_absolute = atoi(line.cmd_options);
+				ast_verbose("== " ANSI_COLOR_YELLOW "Channel is now %i" ANSI_COLOR_RESET "\n", o->mch_absolute);
 			}
 		}
 		//else
