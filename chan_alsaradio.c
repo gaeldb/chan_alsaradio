@@ -615,6 +615,10 @@ static int 					load_inventory(void);
 static int 					manage_macro(struct chan_alsaradio_pvt *o, char digit);
 static int 					exec_macro(struct chan_alsaradio_pvt *o);
 
+/* Radio execution func */
+static int 					radio_exec_text(struct chan_alsaradio_pvt *o, char *str);
+static int 					radio_exec_reset(struct chan_alsaradio_pvt *o);
+
 static struct ast_channel_tech
 							alsaradio_tech = {
 	.type = "alsaradio",
@@ -839,9 +843,9 @@ static void 					*hardware_monitor_thread(void *arg)
 	{
 		if (o->debuglevel)
 			ast_verbose("[%s] Print keepalive message to radio.\n", o->name);
-		(void) send_command(o, "*SET,UI,TEXT,Connexion OK");
+		(void) radio_exec_text(o, "Connexion OK");
 		sleep(print_time);
-		(void) send_command(o, "*SET,UI,TEXT,");
+		(void) radio_exec_text(o, NULL);
 		if (o->debuglevel)
 			ast_verbose("[%s] Sending hardware monitoring requests (next in %d sec.)\n", o->name, o->hardware_monitor_loop_t);
 		send_hardware_request(o);
@@ -1301,13 +1305,16 @@ static int setformat(struct chan_alsaradio_pvt *o, int mode)
 
 static int 						manage_macro(struct chan_alsaradio_pvt *o, char digit)
 {
-	if (digit == '*')
+	// Start of macro
+	if (digit == '*') 
 		memset(o->digit_list, 0, MACRO_SIZE);
+	// End of a macro
 	else if (digit == '#')
 	{
-		ast_verbose(" << Console Received macro %s >> \n", o->digit_list);
+		ast_verbose("== " ANSI_COLOR_YELLOW "Received macro %s", o->digit_list);
 		(void) exec_macro(o);
 	}
+	// New digit for incoming macro
 	else if (strlen(o->digit_list) < MACRO_SIZE)
 		o->digit_list[strlen(o->digit_list)] = digit;
 	return (RESULT_SUCCESS);
@@ -1316,7 +1323,7 @@ static int 						manage_macro(struct chan_alsaradio_pvt *o, char digit)
 static int 						exec_macro(struct chan_alsaradio_pvt *o)
 {
 	if (!(strcmp(o->digit_list, "000001")))
-		(void) send_command(o, "*SET,UI,RESET");
+		(void) radio_exec_reset(o);
 	return (RESULT_SUCCESS);
 }
 
@@ -1980,8 +1987,34 @@ static int 						console_reset(int fd, int argc, const char *const *argv)
 	if (argc != 2)
 		return RESULT_SHOWUSAGE;
 	o = find_desc(alsaradio_active);
-	(void) send_command(o, "*SET,UI,RESET");
+	(void) radio_exec_reset(o);
 	return RESULT_SUCCESS;
+}
+
+/*
+ * Radio exec action: Print text to radio device
+ */
+static int 						radio_exec_text(struct chan_alsaradio_pvt *o, char *str)
+{
+	char 						*cmd;
+	int 						ret;
+
+	if (asprintf(&cmd, "*SET,UI,TEXT,%s", str) != -1)
+	{
+		ret = send_command(o, cmd);
+		free(cmd);
+		return (ret);
+	}
+	return (-1);
+}
+
+/*
+ * Radio exec action: Reset radio device
+ */
+static int 						radio_exec_reset(struct chan_alsaradio_pvt *o)
+{
+	ast_verbose("== " ANSI_COLOR_YELLOW "Radio reset" ANSI_COLOR_RESET "\n");
+	return (send_command(o, "*SET,UI,RESET"));
 }
 
 /*
