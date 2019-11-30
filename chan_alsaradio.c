@@ -745,13 +745,13 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 {
 	if (o)
 	{
-		send_command(o, "*GET,INFO,REV");
-		send_command(o, "*GET,INFO,DREV");
-		send_command(o, "*GET,INFO,FREV");
-		send_command(o, "*GET,INFO,COMMENT,1");
-		send_command(o, "*GET,INFO,ESN");
-		send_command(o, "*GET,DPMR,SENDID");
-		send_command(o, "*GET,MCH,SEL");
+		(void) send_command(o, "*GET,INFO,REV");
+		(void) send_command(o, "*GET,INFO,DREV");
+		(void) send_command(o, "*GET,INFO,FREV");
+		(void) send_command(o, "*GET,INFO,COMMENT,1");
+		(void) send_command(o, "*GET,INFO,ESN");
+		(void) send_command(o, "*GET,DPMR,SENDID");
+		(void) send_command(o, "*GET,MCH,SEL");
 	}
 	return RESULT_SUCCESS;
 }
@@ -763,13 +763,13 @@ static int						send_hardware_request(struct chan_alsaradio_pvt *o)
 {
 	if (o)
 	{
-		send_command(o, "*GET,CTRL,BATV");
-		send_command(o, "*GET,CTRL,BATVST");
-		send_command(o, "*GET,CTRL,TEMP");
-		send_command(o, "*GET,CTRL,TEMPST");
-		send_command(o, "*GET,CTRL,FANST");
-		send_command(o, "*GET,CTRL,TEMPEX");
-		send_command(o, "*GET,CTRL,TEMPEXST");
+		(void) send_command(o, "*GET,CTRL,BATV");
+		(void) send_command(o, "*GET,CTRL,BATVST");
+		(void) send_command(o, "*GET,CTRL,TEMP");
+		(void) send_command(o, "*GET,CTRL,TEMPST");
+		(void) send_command(o, "*GET,CTRL,FANST");
+		(void) send_command(o, "*GET,CTRL,TEMPEX");
+		(void) send_command(o, "*GET,CTRL,TEMPEXST");
 	}
 	return RESULT_SUCCESS;
 }
@@ -795,7 +795,12 @@ static int						send_command(struct chan_alsaradio_pvt *o, const char *cmd)
 	 	ast_mutex_unlock(&o->serdevlock);
 		ast_free(formated_command);
 	}
-	return (ret <= 0) ? -1 : RESULT_SUCCESS;
+	if (ret <= 0)
+	{
+		ast_log(LOG_ERROR, "Error when sending command (return %i): %s\n", (int)ret, strerror(errno));
+		return (-1);
+	}
+	return (RESULT_SUCCESS);
 }
 
 /*
@@ -834,9 +839,9 @@ static void 					*hardware_monitor_thread(void *arg)
 	{
 		if (o->debuglevel)
 			ast_verbose("[%s] Print keepalive message to radio.\n", o->name);
-		send_command(o, "*SET,UI,TEXT,Connexion OK");
+		(void) send_command(o, "*SET,UI,TEXT,Connexion OK");
 		sleep(print_time);
-		send_command(o, "*SET,UI,TEXT,");
+		(void) send_command(o, "*SET,UI,TEXT,");
 		if (o->debuglevel)
 			ast_verbose("[%s] Sending hardware monitoring requests (next in %d sec.)\n", o->name, o->hardware_monitor_loop_t);
 		send_hardware_request(o);
@@ -1065,7 +1070,7 @@ static int 					check_inventory(struct chan_alsaradio_pvt *o, char *id)
 		ast_verbose("  -- " ANSI_COLOR_RED "/!\\ Find illegal radio %s, stun it now !"
 					ANSI_COLOR_RESET "\n", id);
 		snprintf(formated_command, TEXT_SIZE - 1, "*SET,DPMR,TXSTUN,IND,%s,0099890", id);
-		send_command(o, formated_command);
+		(void) send_command(o, formated_command);
 	}
 	else if (alsaradio_default.inventoryinfo && strstr(alsaradio_default.inventoryinfo, id))
 	{
@@ -1073,7 +1078,7 @@ static int 					check_inventory(struct chan_alsaradio_pvt *o, char *id)
 					ANSI_COLOR_RESET "\n", id);
 		snprintf(formated_command, TEXT_SIZE - 1,
 				"*SET,DPMR,TXMSG,IND,%s,0099890,MSG,\"## Contacter equipe telecom ##\",NONE", id);
-		send_command(o, formated_command);
+		(void) send_command(o, formated_command);
 	}
 	return RESULT_SUCCESS;
 }
@@ -1311,10 +1316,7 @@ static int 						manage_macro(struct chan_alsaradio_pvt *o, char digit)
 static int 						exec_macro(struct chan_alsaradio_pvt *o)
 {
 	if (!(strcmp(o->digit_list, "000001")))
-	{
-		if (send_command(o, "*SET,UI,RESET") != RESULT_SUCCESS)
-			ast_log(LOG_ERROR, "Error when sending command\n");
-	}
+		(void) send_command(o, "*SET,UI,RESET");
 	return (RESULT_SUCCESS);
 }
 
@@ -1964,8 +1966,7 @@ static int 						console_command(int fd, int argc, const char *const *argv)
 	if (argc != 3)
 		return RESULT_SHOWUSAGE;
 	o = find_desc(alsaradio_active);
-	if (send_command(o, argv[2]) != RESULT_SUCCESS)
-		ast_log(LOG_ERROR, "Error when sending command\n");
+	(void) send_command(o, argv[2]);
 	return RESULT_SUCCESS;
 }
 
@@ -1979,8 +1980,7 @@ static int 						console_reset(int fd, int argc, const char *const *argv)
 	if (argc != 2)
 		return RESULT_SHOWUSAGE;
 	o = find_desc(alsaradio_active);
-	if (send_command(o, "*SET,UI,RESET") != RESULT_SUCCESS)
-		ast_log(LOG_ERROR, "Error when sending command\n");
+	(void) send_command(o, "*SET,UI,RESET");
 	return RESULT_SUCCESS;
 }
 
