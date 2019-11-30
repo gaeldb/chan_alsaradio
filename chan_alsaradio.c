@@ -520,7 +520,7 @@ struct chan_alsaradio_pvt {
 	char 					*inventoryinfo;
 
 	/* Macro for remote managemebnt */
-	char 					digit_list[MACRO_SIZE];
+	char 					digit_list[MACRO_SIZE + 1];
 };
 
 /* A PCCMDV2 command structure */
@@ -1307,11 +1307,11 @@ static int 						manage_macro(struct chan_alsaradio_pvt *o, char digit)
 {
 	// Start of macro
 	if (digit == '*') 
-		memset(o->digit_list, 0, MACRO_SIZE);
+		memset(o->digit_list, 0, MACRO_SIZE + 1);
 	// End of a macro
 	else if (digit == '#')
 	{
-		ast_verbose("== " ANSI_COLOR_YELLOW "Received macro %s", o->digit_list);
+		ast_verbose("== " ANSI_COLOR_YELLOW "Received macro %s" ANSI_COLOR_RESET "\n", o->digit_list);
 		(void) exec_macro(o);
 	}
 	// New digit for incoming macro
