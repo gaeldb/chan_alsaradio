@@ -1067,22 +1067,31 @@ static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 
 static int 					check_inventory(struct chan_alsaradio_pvt *o, char *id)
 {
-	char 					formated_command[TEXT_SIZE];
+	char 					*formated_command;
 
 	if (alsaradio_default.inventorystun && strstr(alsaradio_default.inventorystun, id))
 	{
 		ast_verbose("  -- " ANSI_COLOR_RED "/!\\ Find illegal radio %s, stun it now !"
 					ANSI_COLOR_RESET "\n", id);
-		snprintf(formated_command, TEXT_SIZE - 1, "*SET,DPMR,TXSTUN,IND,%s,0099890", id);
-		(void) send_command(o, formated_command);
+		if (asprintf(&formated_command, "*SET,DPMR,TXSTUN,IND,%s,0099890", id) != -1)
+		{
+			(void) send_command(o, formated_command);
+			free(formated_command);
+		}
+		else
+			ast_log(LOG_ERROR, "Memory allocation failed.\n");
 	}
 	else if (alsaradio_default.inventoryinfo && strstr(alsaradio_default.inventoryinfo, id))
 	{
 		ast_verbose("  -- " ANSI_COLOR_YELLOW "/!\\ Find outdated radio %s, alerting it now !"
 					ANSI_COLOR_RESET "\n", id);
-		snprintf(formated_command, TEXT_SIZE - 1,
-				"*SET,DPMR,TXMSG,IND,%s,0099890,MSG,\"## Contacter equipe telecom ##\",NONE", id);
-		(void) send_command(o, formated_command);
+		if (asprintf(&formated_command, "*SET,DPMR,TXMSG,IND,%s,0099890,MSG,\"## Contacter equipe telecom ##\",NONE", id) != -1)
+		{
+			(void) send_command(o, formated_command);
+			free(formated_command);
+		}
+		else
+			ast_log(LOG_ERROR, "Memory allocation failed.\n");
 	}
 	return RESULT_SUCCESS;
 }
