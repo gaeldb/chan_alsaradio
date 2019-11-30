@@ -618,6 +618,7 @@ static int 					exec_macro(struct chan_alsaradio_pvt *o);
 /* Radio execution func */
 static int 					radio_exec_text(struct chan_alsaradio_pvt *o, char *str);
 static int 					radio_exec_reset(struct chan_alsaradio_pvt *o);
+static int 					radio_exec_channel(struct chan_alsaradio_pvt *o, int channel);
 
 static struct ast_channel_tech
 							alsaradio_tech = {
@@ -1333,6 +1334,8 @@ static int 						exec_macro(struct chan_alsaradio_pvt *o)
 {
 	if (!(strcmp(o->digit_list, "000001")))
 		(void) radio_exec_reset(o);
+	if (!(strncmp(o->digit_list, "111", 2)))
+		(void) radio_exec_channel(o, atoi(o->digit_list + 3));
 	return (RESULT_SUCCESS);
 }
 
@@ -2024,6 +2027,24 @@ static int 						radio_exec_reset(struct chan_alsaradio_pvt *o)
 {
 	ast_verbose("== " ANSI_COLOR_YELLOW "Radio reset" ANSI_COLOR_RESET "\n");
 	return (send_command(o, "*SET,UI,RESET"));
+}
+
+/*
+ * Radio exec action: Select channel
+ */
+static int 						radio_exec_channel(struct chan_alsaradio_pvt *o, int channel)
+{
+	char 						*cmd;
+	int 						ret;
+
+	ast_verbose("== " ANSI_COLOR_YELLOW "Settings channel to %i" ANSI_COLOR_RESET "\n", channel);
+	if (asprintf(&cmd, "*SET,MCH,SEL,%i", channel) != -1)
+	{
+		ret = send_command(o, cmd);
+		free(cmd);
+		return (ret);
+	}
+	return (-1);
 }
 
 /*
