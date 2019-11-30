@@ -1414,7 +1414,8 @@ static int 						alsaradio_hangup(struct ast_channel *c)
 {
 	struct chan_alsaradio_pvt 	*o = ast_channel_tech_pvt(c);
 
-	ast_log(LOG_NOTICE, "alsaradio_hangup()\n");
+	if (o->debuglevel)
+		ast_log(LOG_NOTICE, "alsaradio_hangup()\n");
 	ast_channel_tech_pvt_set(c, NULL);
 	o->owner = NULL;
 	ast_module_unref(ast_module_info->self);
@@ -2673,7 +2674,8 @@ static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o,
 		ast_log(LOG_ERROR, "snd_pcm_open failed: %s\n", snd_strerror(err));
 		return NULL;
 	} else {
-		ast_log(LOG_NOTICE, "Opening device %s in %s mode\n", dev, (stream == SND_PCM_STREAM_CAPTURE) ? "read" : "write");
+		if (o->debuglevel)
+			ast_log(LOG_NOTICE, "Opening device %s in %s mode\n", dev, (stream == SND_PCM_STREAM_CAPTURE) ? "read" : "write");
 	}
 
 	hwparams = alloca(snd_pcm_hw_params_sizeof());
@@ -2704,7 +2706,8 @@ static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o,
 	if (err < 0)
 		ast_log(LOG_ERROR, "period_size(%ld frames) is bad: %s\n", period_size, snd_strerror(err));
 	else {
-		ast_log(LOG_NOTICE, "Period size is: %d\n", (int)period_size);
+		if (o->debuglevel)
+			ast_log(LOG_NOTICE, "Period size is: %d\n", (int)period_size);
 	}
 
 	buffer_size = 4096 * 2;		/* period_size * 16; */
@@ -2712,7 +2715,8 @@ static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o,
 	if (err < 0)
 		ast_log(LOG_WARNING, "Problem setting buffer size of %ld: %s\n", buffer_size, snd_strerror(err));
 	else {
-		ast_log(LOG_NOTICE, "Buffer size is set to %d frames\n", (int)buffer_size);
+		if (o->debuglevel)
+			ast_log(LOG_NOTICE, "Buffer size is set to %d frames\n", (int)buffer_size);
 	}
 
 	err = snd_pcm_hw_params(handle, hwparams);
@@ -2753,7 +2757,8 @@ static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o,
 	}
 
 	snd_pcm_poll_descriptors(handle, &pfd, err);
-	ast_log(LOG_NOTICE, "Acquired fd %d from the poll descriptor\n", pfd.fd);
+	if (o->debuglevel)
+		ast_log(LOG_NOTICE, "Acquired fd %d from the poll descriptor\n", pfd.fd);
 
 	if (stream == SND_PCM_STREAM_CAPTURE)
 	{
@@ -2765,7 +2770,6 @@ static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o,
 		o->outdev = pfd.fd;
 		o->outhandle = handle;
 	}
-
 	return handle;
 }
 
