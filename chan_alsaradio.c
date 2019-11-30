@@ -1356,7 +1356,8 @@ static int 						alsaradio_digit_end(struct ast_channel *c, char digit, unsigned
 
 	o = ast_channel_tech_pvt(c);
 	/* no better use for received digits than print them */
-	ast_verbose(" << Console Received digit %c of duration %u ms >> \n", digit, duration);
+	if (o->debuglevel)
+		ast_verbose(" << Console Received digit %c of duration %u ms >> \n", digit, duration);
 	manage_macro(o, digit);
 	return 0;
 }
