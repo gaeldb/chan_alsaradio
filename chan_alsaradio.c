@@ -2008,7 +2008,7 @@ static int 						radio_exec_text(struct chan_alsaradio_pvt *o, char *str)
 	char 						*cmd;
 	int 						ret;
 
-	if (asprintf(&cmd, "*SET,UI,TEXT,%s", str) != -1)
+	if (asprintf(&cmd, "*SET,UI,TEXT,%s", str ? str : "") != -1)
 	{
 		ret = send_command(o, cmd);
 		free(cmd);
