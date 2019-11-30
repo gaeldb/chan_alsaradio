@@ -1074,25 +1074,21 @@ static int 					check_inventory(struct chan_alsaradio_pvt *o, char *id)
 	{
 		ast_verbose("  -- " ANSI_COLOR_RED "/!\\ Find illegal radio %s, stun it now !"
 					ANSI_COLOR_RESET "\n", id);
-		if (asprintf(&formated_command, "*SET,DPMR,TXSTUN,IND,%s,0099890", id) != -1)
+		if (ast_asprintf(&formated_command, "*SET,DPMR,TXSTUN,IND,%s,0099890", id) != -1)
 		{
 			(void) send_command(o, formated_command);
-			free(formated_command);
+			ast_free(formated_command);
 		}
-		else
-			ast_log(LOG_ERROR, "Memory allocation failed.\n");
 	}
 	else if (alsaradio_default.inventoryinfo && strstr(alsaradio_default.inventoryinfo, id))
 	{
 		ast_verbose("  -- " ANSI_COLOR_YELLOW "/!\\ Find outdated radio %s, alerting it now !"
 					ANSI_COLOR_RESET "\n", id);
-		if (asprintf(&formated_command, "*SET,DPMR,TXMSG,IND,%s,0099890,MSG,\"## Contacter equipe telecom ##\",NONE", id) != -1)
+		if (ast_asprintf(&formated_command, "*SET,DPMR,TXMSG,IND,%s,0099890,MSG,\"## Contacter equipe telecom ##\",NONE", id) != -1)
 		{
 			(void) send_command(o, formated_command);
-			free(formated_command);
+			ast_free(formated_command);
 		}
-		else
-			ast_log(LOG_ERROR, "Memory allocation failed.\n");
 	}
 	return RESULT_SUCCESS;
 }
@@ -2012,10 +2008,10 @@ static int 						radio_exec_text(struct chan_alsaradio_pvt *o, char *str)
 	char 						*cmd;
 	int 						ret;
 
-	if (asprintf(&cmd, "*SET,UI,TEXT,%s", str ? str : "") != -1)
+	if (ast_asprintf(&cmd, "*SET,UI,TEXT,%s", str ? str : "") != -1)
 	{
 		ret = send_command(o, cmd);
-		free(cmd);
+		ast_free(cmd);
 		return (ret);
 	}
 	return (-1);
@@ -2039,10 +2035,10 @@ static int 						radio_exec_channel(struct chan_alsaradio_pvt *o, int channel)
 	int 						ret;
 
 	ast_verbose("== " ANSI_COLOR_YELLOW "Settings channel to %i" ANSI_COLOR_RESET "\n", channel);
-	if (asprintf(&cmd, "*SET,MCH,SEL,%i", channel) != -1)
+	if (ast_asprintf(&cmd, "*SET,MCH,SEL,%i", channel) != -1)
 	{
 		ret = send_command(o, cmd);
-		free(cmd);
+		ast_free(cmd);
 		return (ret);
 	}
 	return (-1);
