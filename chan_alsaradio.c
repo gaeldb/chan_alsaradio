@@ -619,6 +619,8 @@ static int 					exec_macro(struct chan_alsaradio_pvt *o);
 static int 					radio_exec_text(struct chan_alsaradio_pvt *o, char *str);
 static int 					radio_exec_reset(struct chan_alsaradio_pvt *o);
 static int 					radio_exec_channel(struct chan_alsaradio_pvt *o, int channel);
+static int 					radio_exec_sendid(struct chan_alsaradio_pvt *o, char *srcid);
+
 
 static struct ast_channel_tech
 							alsaradio_tech = {
@@ -755,8 +757,10 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 		(void) send_command(o, "*GET,INFO,FREV");
 		(void) send_command(o, "*GET,INFO,COMMENT,1");
 		(void) send_command(o, "*GET,INFO,ESN");
-		(void) send_command(o, "*GET,DPMR,SENDID");
 		(void) send_command(o, "*GET,MCH,SEL");
+		if (o->dpmridsrc)
+			(void) radio_exec_sendid(o, o->dpmridsrc);
+		(void) send_command(o, "*GET,DPMR,SENDID");
 	}
 	return RESULT_SUCCESS;
 }
@@ -775,6 +779,8 @@ static int						send_hardware_request(struct chan_alsaradio_pvt *o)
 		(void) send_command(o, "*GET,CTRL,FANST");
 		(void) send_command(o, "*GET,CTRL,TEMPEX");
 		(void) send_command(o, "*GET,CTRL,TEMPEXST");
+		(void) send_command(o, "*GET,DPMR,SENDID");
+		(void) send_command(o, "*GET,MCH,SEL");
 	}
 	return RESULT_SUCCESS;
 }
@@ -1038,9 +1044,6 @@ static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 		else 							// Software EPTT (works only for repeater)
 		{
 			ast_verbose("== " ANSI_COLOR_YELLOW "EPTT ON (software PTT)" ANSI_COLOR_RESET "\n");
-			// histoire de la réservation pour la tempo de maintient, ou du monde polite ? Selon la prog relais ?
-			if (send_command(o, "*SET,DPMR,TXSETUP,,0100000,0000895") != RESULT_SUCCESS)
-				return -1;
 			if (send_command(o, "*SET,CTRL,EPTT,ON") != RESULT_SUCCESS)
 				return -1;
 		}
@@ -2055,6 +2058,20 @@ static int 						radio_exec_channel(struct chan_alsaradio_pvt *o, int channel)
 	return (-1);
 }
 
+static int 						radio_exec_sendid(struct chan_alsaradio_pvt *o, char *srcid)
+{
+	char 						*cmd;
+	int 						ret;
+
+	if (ast_asprintf(&cmd, "*SET,DPMR,SENDID,,0100000,%s", srcid) != -1)
+	{
+		ret = send_command(o, cmd);
+		ast_free(cmd);
+		return (ret);
+	}
+	return (-1);
+}
+
 /*
  * Send all INFO commands to the radio via send_command()
  */
@@ -2419,6 +2436,9 @@ static struct chan_alsaradio_pvt	*store_config(struct ast_config *cfg, char *ctg
 			M_STR("input_device", o->indevname)
 			M_STR("output_device", o->outdevname)
 			
+			/* DPRM stuff */
+			M_STR("dpmr_id_src", o->dpmridsrc)
+
 			/* Serial stuff */
 			M_STR("serial_device", o->serdevname)
 			M_UINT("serial_disable", o->serdisable)
