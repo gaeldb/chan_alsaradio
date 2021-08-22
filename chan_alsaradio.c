@@ -27,73 +27,73 @@
         <defaultenabled>yes</defaultenabled> 	 	 
  ***/
 
-#include 								"asterisk.h"
+#include 						"asterisk.h"
 
 ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 
-#include 								<stdio.h>
-#include 								<ctype.h>
-#include 								<math.h>
-#include 								<string.h>
-#include 								<termios.h>
-#include 								<unistd.h>
-//#include 								<sys/io.h>
-#include 								<sys/ioctl.h>
-#include 								<fcntl.h>
-#include 								<sys/time.h>
-#include 								<stdlib.h>
-#include 								<errno.h>
-#include 								<alsa/asoundlib.h>
-#include 								<math.h>
+#include 						<stdio.h>
+#include 						<ctype.h>
+#include 						<math.h>
+#include 						<string.h>
+#include 						<termios.h>
+#include 						<unistd.h>
+//#include 						<sys/io.h>
+#include 						<sys/ioctl.h>
+#include 						<fcntl.h>
+#include 						<sys/time.h>
+#include 						<stdlib.h>
+#include 						<errno.h>
+#include 						<alsa/asoundlib.h>
+#include 						<math.h>
 
 #define DEBUG_CAPTURES	 				1
 
 #define RX_CAP_RAW_FILE					"/tmp/rx_cap_in.pcm"
 #define TX_CAP_RAW_FILE					"/tmp/tx_cap_in.pcm"
 
-#define	MIXER_PARAM_MIC_PLAYBACK_SW 	"Mic Playback Switch"
-#define MIXER_PARAM_MIC_PLAYBACK_VOL 	"Mic Playback Volume"
-#define	MIXER_PARAM_MIC_CAPTURE_SW 		"Mic Capture Switch"
-#define	MIXER_PARAM_MIC_CAPTURE_VOL 	"Mic Capture Volume"
-#define	MIXER_PARAM_MIC_BOOST 			"Auto Gain Control"
-#define	MIXER_PARAM_SPKR_PLAYBACK_SW 	"Speaker Playback Switch"
-#define	MIXER_PARAM_SPKR_PLAYBACK_VOL 	"Speaker Playback Volume"
+#define	MIXER_PARAM_MIC_PLAYBACK_SW 			"Mic Playback Switch"
+#define MIXER_PARAM_MIC_PLAYBACK_VOL 			"Mic Playback Volume"
+#define	MIXER_PARAM_MIC_CAPTURE_SW 			"Mic Capture Switch"
+#define	MIXER_PARAM_MIC_CAPTURE_VOL 			"Mic Capture Volume"
+#define	MIXER_PARAM_MIC_BOOST 				"Auto Gain Control"
+#define	MIXER_PARAM_SPKR_PLAYBACK_SW 			"Speaker Playback Switch"
+#define	MIXER_PARAM_SPKR_PLAYBACK_VOL 			"Speaker Playback Volume"
 
-#define	DELIMCHR 						','
-#define	QUOTECHR 						34
+#define	DELIMCHR 					','
+#define	QUOTECHR 					34
 
 #define	READERR_THRESHOLD 				50
 
 #ifdef __linux
-#include 								<linux/soundcard.h>
+#include						<linux/soundcard.h>
 #elif defined(__FreeBSD__)
-#include 								<sys/soundcard.h>
+#include						<sys/soundcard.h>
 #else
-#include 								<soundcard.h>
+#include						<soundcard.h>
 #endif
 
-#include 								"asterisk/lock.h"
-#include 								"asterisk/frame.h"
-#include 								"asterisk/logger.h"
-#include 								"asterisk/callerid.h"
-#include 								"asterisk/channel.h"
-#include 								"asterisk/module.h"
-#include 								"asterisk/options.h"
-#include 								"asterisk/pbx.h"
-#include 								"asterisk/config.h"
-#include 								"asterisk/cli.h"
-#include 								"asterisk/utils.h"
-#include 								"asterisk/causes.h"
-#include 								"asterisk/endian.h"
-#include 								"asterisk/stringfields.h"
-#include 								"asterisk/abstract_jb.h"
-#include 								"asterisk/musiconhold.h"
-#include 								"asterisk/dsp.h"
+#include						"asterisk/lock.h"
+#include						"asterisk/frame.h"
+#include						"asterisk/logger.h"
+#include						"asterisk/callerid.h"
+#include						"asterisk/channel.h"
+#include						"asterisk/module.h"
+#include						"asterisk/options.h"
+#include						"asterisk/pbx.h"
+#include						"asterisk/config.h"
+#include						"asterisk/cli.h"
+#include						"asterisk/utils.h"
+#include						"asterisk/causes.h"
+#include						"asterisk/endian.h"
+#include						"asterisk/stringfields.h"
+#include						"asterisk/abstract_jb.h"
+#include						"asterisk/musiconhold.h"
+#include						"asterisk/dsp.h"
 
 /* Patch 13 */
-#include 								"asterisk/format_compatibility.h"
-#include 								"asterisk/format_cache.h"
-#include 								"asterisk/stasis_channels.h"
+#include						"asterisk/format_compatibility.h"
+#include						"asterisk/format_cache.h"
+#include						"asterisk/stasis_channels.h"
 
 /* ANSI colors */
 #define ANSI_COLOR_RED     				"\x1b[31m"
@@ -114,7 +114,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 
 #define MACRO_SIZE						6
 
-#define HARDWARE_MONITOR_LOOP_TIME		60
+#define HARDWARE_MONITOR_LOOP_TIME		30
 
 #define SERIAL_DEV						"/dev/ttyS0"
 #define SERIAL_BAUDRATE					B9600
@@ -122,7 +122,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #define LOGFILE_NAME 					"/var/log/asterisk/radio.log"
 
 #define FRAME_SIZE 						160 /* Lets use 160 sample frames, just like GSM.  */
-#define PERIOD_FRAMES 					80	/* 80 Frames, at 2 bytes each */
+#define PERIOD_FRAMES 					80  /* 80 Frames, at 2 bytes each */
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 static snd_pcm_format_t 				format = SND_PCM_FORMAT_S16_LE;
@@ -298,7 +298,7 @@ END_CONFIG
  * not sure if there is a suitable definition anywhere.
  */
 #define TEXT_SIZE				256
-#define COMMAND_BUFFER_SIZE		256
+#define COMMAND_BUFFER_SIZE			256
 
 #ifndef MIN
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -344,122 +344,123 @@ struct sound {
  */
 struct chan_alsaradio_pvt {
 	struct chan_alsaradio_pvt		*next;
-	char 							*name;
-	int 							devtype;				/* actual type of device */
-	int total_blocks;			/* total blocks in the output device */
-	int sounddev;
+	char 					*name;
+	int 					devtype; /* actual type of device */
+	int 					total_blocks; /* total blocks in the output device */
+	int 					sounddev;
 	enum { M_UNSET, M_FULL, M_READ, M_WRITE } duplex;
-	short cdMethod;
-	int autoanswer;
-	int autohangup;
-	int hookstate;
-	int usedtmf;
-	unsigned int queuesize;		/* max fragments in queue */
-	unsigned int frags;			/* parameter for SETFRAGMENT */
+	short 					cdMethod;
+	int 					autoanswer;
+	int 					autohangup;
+	int 					hookstate;
+	int 					usedtmf;
+	unsigned int 				queuesize; /* max fragments in queue */
+	unsigned int 				frags;	/* parameter for SETFRAGMENT */
 
 	int warned;					/* various flags used for warnings */
-#define WARN_used_blocks	1
-#define WARN_speed			2
-#define WARN_frag			4
-	int w_errors;				/* overfull in the write path */
-	struct timeval lastopen;
+#define WARN_used_blocks			1
+#define WARN_speed				2
+#define WARN_frag				4
+	int 					w_errors; /* overfull in the write path */
+	struct timeval 				lastopen;
 
-	int overridecontext;
-	int mute;
+	int 					overridecontext;
+	int 					mute;
 
 	/* boost support. BOOST_SCALE * 10 ^(BOOST_MAX/20) must
 	 * be representable in 16 bits to avoid overflows.
 	 */
-#define	BOOST_SCALE			(1<<9)
-#define	BOOST_MAX			40			/* slightly less than 7 bits */
-	int boost;					/* input boost, scaled by BOOST_SCALE */
-	char devicenum;
-	int spkrmax;
-	int micmax;
+#define	BOOST_SCALE				(1<<9)
+#define	BOOST_MAX				40	/* slightly less than 7 bits */
+	int 					boost;	/* input boost, scaled by BOOST_SCALE */
+	char 					devicenum;
+	int 					spkrmax;
+	int 					micmax;
 
 
 
-	struct ast_channel *owner;
-	char ext[AST_MAX_EXTENSION];
-	char ctx[AST_MAX_CONTEXT];
-	char language[MAX_LANGUAGE];
-	char cid_name[256];			/*XXX */
-	char cid_num[256];			/*XXX */
-	char mohinterpret[MAX_MUSICCLASS];
+	struct ast_channel 		*owner;
+	char 					ext[AST_MAX_EXTENSION];
+	char 					ctx[AST_MAX_CONTEXT];
+	char 					language[MAX_LANGUAGE];
+	char 					cid_name[256];			/*XXX */
+	char 					cid_num[256];			/*XXX */
+	char 					mohinterpret[MAX_MUSICCLASS];
 
 	/* buffers used in alsaradio_write, 2 per int */
-	char alsaradio_write_buf[FRAME_SIZE * 2];    
+	char 					alsaradio_write_buf[FRAME_SIZE * 2];    
 
-	int alsaradio_write_dst;
+	int 					alsaradio_write_dst;
 	/* buffers used in alsaradio_read - AST_FRIENDLY_OFFSET space for headers
 	 * plus enough room for a full frame
 	 */
-	char alsaradio_read_buf[FRAME_SIZE * 4 * 6];
-	char alsaradio_read_frame_buf[FRAME_SIZE * 2 + AST_FRIENDLY_OFFSET];
-	AST_LIST_HEAD_NOLOCK(, ast_frame) txq;
+	char 					alsaradio_read_buf[FRAME_SIZE * 4 * 6];
+	char 					alsaradio_read_frame_buf[FRAME_SIZE * 2 + AST_FRIENDLY_OFFSET];
+	AST_LIST_HEAD_NOLOCK(, ast_frame) 	txq;
 
 
-	ast_mutex_t  txqlock;
+	ast_mutex_t  			txqlock;
 
 
-	int readpos;				/* read position above */
-	struct ast_frame read_f;	/* returned by alsaradio_read */
+	int 					readpos;	 /* read position above */
+	struct 					ast_frame read_f;/* returned by alsaradio_read */
 
-	char 	debuglevel;
-	char 	radioduplex;			// 
+	char 					debuglevel;
+	char 					radioduplex;
 
-	int  	tracetype;
-	int     tracelevel;
+	int  					tracetype;
+	int     				tracelevel;
 
-	char lastrx;
-	char rxsersq;
-	char rxserctcss;
+	char 					lastrx;
+	char 					rxsersq;
+	char 					rxserctcss;
 
-	char rxkeyed;	  			// indicates rx signal present
+	char 					rxkeyed;	// indicates rx signal present
 
-	char lasttx;
-	char txkeyed;				// tx key request from upper layers 
-	char txtestkey;
+	char 					lasttx;
+	char 					txkeyed;	// tx key request from upper layers 
+	char 					txtestkey;
 
-	time_t lastsertime;
-	struct ast_dsp *dsp;
+	time_t 					lastsertime;
+	struct ast_dsp 			*dsp;
 
-	short	flpt[NTAPS + 1];
-	short	flpr[NTAPS + 1];
+	short					flpt[NTAPS + 1];
+	short					flpr[NTAPS + 1];
 
-	char    rxcpusaver;
-	char    txcpusaver;
+	char    				rxcpusaver;
+	char    				txcpusaver;
 
-	char 	rxcdtype;
-	char 	rxsdtype;
+	char 					rxcdtype;
+	char 					rxsdtype;
 
 
-	int	rxondelay;
-	int	rxoncnt;
+	int						rxondelay;
+	int						rxoncnt;
 
-	int	rxboostset;
-	int	rxmixerset;
-	int 	txmixaset;
-	int 	txmixbset;
+	int						rxboostset;
+	int						rxmixerset;
+	int 					txmixaset;
+	int 					txmixbset;
 
 	struct {
-	    unsigned rxcapraw:1;
-	    unsigned txcapraw:1;
-	}b;
-	int readerrs;
+	    unsigned 			rxcapraw:1;
+	    unsigned 			txcapraw:1;
+	} b;
+
+	int 					readerrs;
 
 	/* ALSA stuff */
-	char silencesuppression;
-	int  silencethreshold;
-	char indevname[256];
-	int indev;
-	snd_pcm_t *inhandle;
-	char outdevname[256];
-	int outdev;
-	snd_pcm_t *outhandle;
+	char 					silencesuppression;
+	int  					silencethreshold;
+	char 					indevname[256];
+	int 					indev;
+	snd_pcm_t 				*inhandle;
+	char 					outdevname[256];
+	int 					outdev;
+	snd_pcm_t 				*outhandle;
 
-	struct timeval tv;
-	struct timeval tv2;
+	struct timeval 			tv;
+	struct timeval 			tv2;
 
 	/* Serial stuff */
 	pthread_t 				serthread;
@@ -478,15 +479,18 @@ struct chan_alsaradio_pvt {
 	int 					stopser;
 	int 					stopwrite;
 
-	/* Command INFO and MCH stuff */
+	/* Command INFO, CTRL and MCH stuff */
 	char 					inforev[TEXT_SIZE];
 	char 					infodrev[TEXT_SIZE];
 	char 					infofrev[TEXT_SIZE];
-	char 					infocomment[TEXT_SIZE];
+	char 					infocomment1[TEXT_SIZE];
+	char 					infocomment2[TEXT_SIZE];
 	char 					infoesn[TEXT_SIZE];
-	char                    dpmridtype[TEXT_SIZE];
-	char                    dpmridsrc[TEXT_SIZE];
-	char                    dpmriddest[TEXT_SIZE];
+	char 					ctrlbatv[TEXT_SIZE];
+	char 					ctrltemp[TEXT_SIZE];
+	char					dpmridtype[TEXT_SIZE];
+	char					dpmridsrc[TEXT_SIZE];
+	char					dpmriddest[TEXT_SIZE];
 	unsigned short 			mch_absolute;
 	unsigned short 			mch_relative;
 	unsigned short 			mch_zone;
@@ -512,7 +516,7 @@ struct chan_alsaradio_pvt {
 
 	/* Hardware monitor taskprocessor */
 	pthread_t 				hardware_monitor_thread;
-	unsigned int 			hardware_monitor_loop_t;
+	unsigned int 				hardware_monitor_loop_t;
 
 	/* Inventory lists */
 	char 					inhibit;
@@ -525,10 +529,10 @@ struct chan_alsaradio_pvt {
 
 /* A PCCMDV2 command structure */
 typedef struct pccmdv2 {
-	char 							*cmd_type;
-	char 							*cmd_category;
-	char 							*cmd_function;
-	char 							*cmd_options;
+	char 					*cmd_type;
+	char 					*cmd_category;
+	char 					*cmd_function;
+	char 					*cmd_options;
 } PCCMDV2_FRAME;
 
 static struct chan_alsaradio_pvt 
@@ -580,13 +584,13 @@ static char 				*alsaradio_active;
 /*	DECLARE FUNCTION PROTOTYPES	*/
 //static void 				mixer_write(struct chan_alsaradio_pvt *o);
 /*static void 				tune_write(struct chan_alsaradio_pvt *o);*/
-static struct ast_channel 	*alsaradio_request(const char *type, struct ast_format_cap *cap, const struct ast_assigned_ids *assignedids, const struct ast_channel *requestor, const char *data, int *cause);
+static struct ast_channel 			*alsaradio_request(const char *type, struct ast_format_cap *cap, const struct ast_assigned_ids *assignedids, const struct ast_channel *requestor, const char *data, int *cause);
 static int 					alsaradio_digit_begin(struct ast_channel *c, char digit);
 static int 					alsaradio_digit_end(struct ast_channel *c, char digit, unsigned int duration);
 static int 					alsaradio_text(struct ast_channel *c, const char *text);
 static int 					alsaradio_hangup(struct ast_channel *c);
 static int 					alsaradio_answer(struct ast_channel *c);
-static struct ast_frame 	*alsaradio_read(struct ast_channel *chan);
+static struct ast_frame 			*alsaradio_read(struct ast_channel *chan);
 static int 					alsaradio_call(struct ast_channel *c, const char *dest, int timeout);
 static int 					alsaradio_write(struct ast_channel *chan, struct ast_frame *f);
 static int 					alsaradio_indicate(struct ast_channel *chan, int cond, const void *data, size_t datalen);
@@ -594,19 +598,20 @@ static int 					alsaradio_fixup(struct ast_channel *oldchan, struct ast_channel 
 static int 					alsaradio_setoption(struct ast_channel *chan, int option, void *data, int datalen);
 static int 					setformat(struct chan_alsaradio_pvt *o, int mode);
 
-static snd_pcm_t 			*alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pcm_stream_t stream);
-static void 				alsa_card_uninit(struct chan_alsaradio_pvt *o);
+static snd_pcm_t 				*alsa_card_init(struct chan_alsaradio_pvt *o, char *dev, snd_pcm_stream_t stream);
+static void 					alsa_card_uninit(struct chan_alsaradio_pvt *o);
 static int					alsa_write(struct chan_alsaradio_pvt *o, struct ast_frame *f);
-static struct ast_frame 	*alsa_read(struct chan_alsaradio_pvt *o);
+static struct ast_frame 			*alsa_read(struct chan_alsaradio_pvt *o);
 
 static int 					serial_init(struct chan_alsaradio_pvt *o);
-static void 				serial_uninit(struct chan_alsaradio_pvt *o);
+static void 					serial_uninit(struct chan_alsaradio_pvt *o);
 //static int 					serial_getcor(struct chan_alsaradio_pvt *o);
 //static int 					serial_getctcss(struct chan_alsaradio_pvt *o);
 static int 					serial_pttkey(struct chan_alsaradio_pvt *o, enum ptt_status);
 static int 					manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status);
+static int					send_info_request(struct chan_alsaradio_pvt *o);
 static int					send_hardware_request(struct chan_alsaradio_pvt *o);
-static int      			send_command(struct chan_alsaradio_pvt *o, const char *cmd);
+static int      				send_command(struct chan_alsaradio_pvt *o, const char *cmd);
 static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					log_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd);
 static int 					load_log_file(void);
@@ -756,6 +761,7 @@ static int						send_info_request(struct chan_alsaradio_pvt *o)
 		(void) send_command(o, "*GET,INFO,DREV");
 		(void) send_command(o, "*GET,INFO,FREV");
 		(void) send_command(o, "*GET,INFO,COMMENT,1");
+		(void) send_command(o, "*GET,INFO,COMMENT,2");
 		(void) send_command(o, "*GET,INFO,ESN");
 		(void) send_command(o, "*GET,MCH,SEL");
 		if (o->dpmridsrc)
@@ -1044,7 +1050,9 @@ static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 		else 							// Software EPTT (works only for repeater)
 		{
 			ast_verbose("== " ANSI_COLOR_YELLOW "EPTT ON (software PTT)" ANSI_COLOR_RESET "\n");
-			if (send_command(o, "*SET,CTRL,EPTT,ON") != RESULT_SUCCESS)
+			
+			if (send_command(o, "*SET,CTRL,TX,ON") != RESULT_SUCCESS ||
+				send_command(o, "*SET,CTRL,EPTT,ON") != RESULT_SUCCESS)
 				return -1;
 		}
 	}
@@ -1058,7 +1066,8 @@ static int 				    manage_ptt(struct chan_alsaradio_pvt *o, enum ptt_status ptt)
 		else 							// Software EPTT (works only for repeater)
 		{
 			ast_verbose("== " ANSI_COLOR_YELLOW "EPTT OFF (software PTT)" ANSI_COLOR_RESET "\n");
-			if (send_command(o, "*SET,CTRL,EPTT,OFF") != RESULT_SUCCESS)
+			if (send_command(o, "*SET,CTRL,EPTT,OFF") != RESULT_SUCCESS ||
+				send_command(o, "*SET,CTRL,TX,OFF") != RESULT_SUCCESS)
 				return -1;
 		}
 	}
@@ -1189,8 +1198,8 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 
 	// Hardcore debug parsing
 	//if (o->debuglevel)
-	//	ast_verbose("TYPE = %s\nCAT = %s\nFNC = %s\nOPT = %s\n",
-	//		line.cmd_type, line.cmd_category, line.cmd_function, line.cmd_options);
+	/*		ast_verbose("TYPE = %s\nCAT = %s\nFNC = %s\nOPT = %s\n",
+				line.cmd_type, line.cmd_category, line.cmd_function, line.cmd_options);*/
 
 	if (!strcmp(line.cmd_type, "NTF"))
 	{
@@ -1202,15 +1211,32 @@ static int 					parse_pccmdv2_command(struct chan_alsaradio_pvt *o, char *cmd)
 				strcpy(o->infodrev, line.cmd_options);
 			else if (!strcmp(line.cmd_function, "FREV"))
 				strcpy(o->infofrev, line.cmd_options);
-			else if (!strcmp(line.cmd_function, "COMMENT"))
-				strcpy(o->infocomment, line.cmd_options);
+			else if (!strcmp(line.cmd_function, "COMMENT") && !strncmp(line.cmd_options, "1", 1))
+			{
+				line.cmd_options += 2;
+				strcpy(o->infocomment1, line.cmd_options);
+			}
+			else if (!strcmp(line.cmd_function, "COMMENT") && !strncmp(line.cmd_options, "2", 1))
+			{
+				line.cmd_options += 2;
+				strcpy(o->infocomment2, line.cmd_options);
+			}
 			else if (!strcmp(line.cmd_function, "ESN"))
 				strcpy(o->infoesn, line.cmd_options);
 		}
+
+		else if (!strcmp(line.cmd_category, "CTRL"))
+		{
+			if (!strcmp(line.cmd_function, "BATV"))
+				strcpy(o->ctrlbatv, line.cmd_options);
+			else if (!strcmp(line.cmd_function, "TEMP"))
+				strcpy(o->ctrltemp, line.cmd_options);
+		}
+
 		else if (!strcmp(line.cmd_category, "DPMR") ||
-				(!strcmp(line.cmd_category, "CTRL") &&
-				(!strcmp(line.cmd_function, "DBUSY") || !strcmp(line.cmd_function, "TX"))))
+				(!strcmp(line.cmd_category, "CTRL") && (!strcmp(line.cmd_function, "DBUSY") || !strcmp(line.cmd_function, "TX"))))
 			action_dpmr(o, &line);
+
 		else if (!strcmp(line.cmd_category, "MCH"))
 		{
 			if (!strcmp(line.cmd_function, "SEL"))
@@ -2083,15 +2109,18 @@ static int 						radio_param(int fd, int argc, const char *const *argv)
 	if (argc == 2) /* just show stuff */
 	{
 		ast_cli(fd, "Active radio interface [%s] on serial port [%s]\n", alsaradio_active, o->serdevname);
-		ast_cli(fd, "REV: \t\t\t%s\n", o->inforev);
-		ast_cli(fd, "DREV: \t\t\t%s\n", o->infodrev);
-		ast_cli(fd, "FREV: \t\t\t%s\n", o->infofrev);
-		ast_cli(fd, "Clone comment: \t\t%s\n", o->infocomment);
-		ast_cli(fd, "ESN: \t\t\t%s\n", o->infoesn);
-		ast_cli(fd, "DPMR ID type: \t\t%s\n", o->dpmridtype);
-		ast_cli(fd, "DPMR ID src: \t\t%s\n", o->dpmridsrc);
-		ast_cli(fd, "DPMR ID dest: \t\t%s\n", o->dpmriddest);
-		ast_cli(fd, "MCH absolute: \t\t%u\n", o->mch_absolute);
+		ast_cli(fd, "REV: %s\n", o->inforev);
+		ast_cli(fd, "DREV: %s\n", o->infodrev);
+		ast_cli(fd, "FREV: %s\n", o->infofrev);
+		ast_cli(fd, "Clone comment 1: %s\n", o->infocomment1);
+		ast_cli(fd, "Clone comment 2: %s\n", o->infocomment2);
+		ast_cli(fd, "ESN: %s\n", o->infoesn);
+		ast_cli(fd, "BATV: %s\n", o->ctrlbatv);
+		ast_cli(fd, "TEMP: %s\n", o->ctrltemp);
+		ast_cli(fd, "DPMR ID type: %s\n", o->dpmridtype);
+		ast_cli(fd, "DPMR ID src: %s\n", o->dpmridsrc);
+		ast_cli(fd, "DPMR ID dest: %s\n", o->dpmriddest);
+		ast_cli(fd, "MCH: %u\n", o->mch_absolute);
 		//ast_cli(fd, "MCH relative: \t\t%u on zone %u\n", o->mch_relative, o->mch_zone);
 	}
 	return RESULT_SUCCESS;
